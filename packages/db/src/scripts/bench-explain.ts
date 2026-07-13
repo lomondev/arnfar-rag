@@ -61,8 +61,8 @@ try {
   }
   times.sort((a, b) => a - b);
   const pct = (p: number) => times[Math.floor((p / 100) * times.length)]!.toFixed(1);
-  const [{ n }] = await sql<{ n: number }[]>`SELECT count(*)::int n FROM rag_chunk`;
-  console.log(`\n=== latency over ${N} dense searches (total rag_chunk rows: ${n}) ===`);
+  const nRows = await sql<{ n: number }[]>`SELECT count(*)::int n FROM rag_chunk`;
+  console.log(`\n=== latency over ${N} dense searches (total rag_chunk rows: ${nRows[0]?.n ?? 0}) ===`);
   console.log(`p50 ${pct(50)}ms · p95 ${pct(95)}ms · p99 ${pct(99)}ms`);
 } finally {
   await sql.end();

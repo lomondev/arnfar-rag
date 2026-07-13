@@ -84,3 +84,88 @@ export async function embedOne(text: string): Promise<number[]> {
   const [vec] = await embedBatch([text]);
   return vec!;
 }
+
+interface GenerateResponse {
+  response?: string;
+}
+
+export interface GenerateOptions {
+  system?: string;
+  temperature?: number;
+  maxTokens?: number;
+  json?: boolean;
+  model?: string;
+}
+
+export interface StreamOptions {
+  system?: string;
+  temperature?: number;
+  maxTokens?: number;
+  model?: string;
+  signal?: AbortSignal;
+}
+
+/** Stream generation token-by-token (NDJSON from Ollama). Aborting the signal
+ *  actually cancels the upstream Ollama request — not just the UI. */
+export async function* generateStream(
+  prompt: string,
+  opts: StreamOptions = {},
+): AsyncGenerator<string> {
+  const body: Record<string, unknown> = {
+    model: opts.model ?? env.genModel,
+    prompt,
+    stream: true,
+    think: false,
+    options: {
+      temperature: opts.temperature ?? 0.2,
+      num_predict: opts.maxTokens ?? 800,
+    },
+  };
+  if (opts.system) body.system = opts.system;
+
+  const res = await fetch(`${env.ollamaBaseUrl}/api/generate`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+    ...(opts.signal ? { signal: opts.signal } : {}),
+  });
+  if (!res.ok || !res.body) throw new Error(`ollama /api/generate → ${res.status}`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line) continue;
+      const obj = JSON.parse(line) as { response?: string; done?: boolean };
+      if (obj.response) yield obj.response;
+      if (obj.done) return;
+    }
+  }
+}
+
+/** Non-streaming generation (qwen3:8b by default). `/no_think` + think:false keep
+ *  qwen3 out of its slow reasoning mode for structured drafting. */
+export async function generate(prompt: string, opts: GenerateOptions = {}): Promise<string> {
+  const body: Record<string, unknown> = {
+    model: opts.model ?? env.genModel,
+    prompt: opts.json ? `${prompt}\n/no_think` : prompt,
+    stream: false,
+    think: false,
+    options: {
+      temperature: opts.temperature ?? 0.2,
+      num_predict: opts.maxTokens ?? 512,
+    },
+  };
+  if (opts.system) body.system = opts.system;
+  if (opts.json) body.format = "json";
+  const res = await postWithRetry("/api/generate", body);
+  const data = (await res.json()) as GenerateResponse;
+  return (data.response ?? "").trim();
+}

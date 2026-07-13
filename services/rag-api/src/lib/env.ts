@@ -10,7 +10,12 @@ export const env = {
 
   ollamaBaseUrl: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434",
   embedModel: process.env.OLLAMA_EMBED_MODEL ?? "bge-m3",
-  genModel: process.env.OLLAMA_GEN_MODEL ?? "qwen3:8b",
+  // SEA-LION (Gemma-based, tuned for SE-Asian languages) is the best local Lao
+  // generator on this host; it follows the cite-or-abstain instruction cleanly.
+  genModel:
+    process.env.OLLAMA_GEN_MODEL ?? "hf.co/aisingapore/Gemma-SEA-LION-v3-9B-IT-GGUF:latest",
+  // Cross-FAMILY judge (CLAUDE.md decision 4) — qwen ≠ the Gemma-based generator.
+  genModelAlt: process.env.OLLAMA_GEN_MODEL_ALT ?? "qwen3:8b",
   embedConcurrency: Number(process.env.OLLAMA_EMBED_CONCURRENCY ?? 4),
 
   laoNlpUrl: process.env.LAO_NLP_URL ?? "http://localhost:7731",

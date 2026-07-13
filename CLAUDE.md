@@ -122,8 +122,9 @@ bun run dev:web                    # web      :3000
 
 # ollama models (host) — verify before trusting
 ollama pull bge-m3                 # embeddings, 1024-dim, multilingual. Required for Lao.
-ollama pull qwen3:8b               # generator
-ollama pull gemma3:12b             # generator alternative (benched in Phase 6)
+# Generator: SEA-LION (Gemma-based, SE-Asian-tuned) — best local Lao, follows cite-or-abstain.
+ollama pull hf.co/aisingapore/Gemma-SEA-LION-v3-9B-IT-GGUF:latest
+ollama pull qwen3:8b               # cross-FAMILY judge for eval (qwen ≠ Gemma-based generator)
 ```
 
 **Forbidden embedding models:** `nomic-embed-text`, `mxbai-embed-large`, `all-minilm` — English-
