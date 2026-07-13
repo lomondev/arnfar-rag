@@ -1,0 +1,2 @@
+/* The theme lives in @arnfar/ui so the Studio and any future surface share one source. */
+@import "@arnfar/ui/globals.css";

@@ -12,6 +12,9 @@
     "bun": ">=1.1.0"
   },
   "scripts": {
+    "start": "./scripts/dev.sh start",
+    "status": "./scripts/dev.sh status",
+    "stop": "./scripts/dev.sh stop",
     "typecheck": "bun run --filter '*' typecheck",
     "lint": "bun run --filter '*' lint",
     "db:generate": "bun --env-file=.env run --filter '@arnfar/db' generate",

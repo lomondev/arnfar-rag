@@ -7,7 +7,8 @@
     "plugins": [{ "name": "next" }],
     "incremental": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@arnfar/ui/*": ["../../packages/ui/src/*"]
     }
   },
   "include": [

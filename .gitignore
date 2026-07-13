@@ -41,3 +41,7 @@ venv/
 
 # datasets: track manifests via git-lfs, ignore local scratch exports
 datasets/**/*.jsonl.tmp
+
+# dev.sh process logs + pids
+.logs/
+.run/

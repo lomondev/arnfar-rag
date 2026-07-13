@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { PHETSARATH_FAMILY, phetsarathFontFaceCss } from "@arnfar/ui";
+import { phetsarathFontFaceCss } from "@arnfar/ui";
+import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Arnfar AI — Lao Accounting Assistant",
@@ -12,17 +13,14 @@ export default function RootLayout({
   return (
     <html lang="lo">
       <head>
-        {/* Phetsarath OT for all Lao script — self-hosted, font-display: swap. */}
+        {/*
+         * Phetsarath OT for all Lao script — self-hosted, font-display: swap.
+         * These @font-face rules declare the family that Tailwind's --font-sans names
+         * (packages/ui/src/styles/globals.css); the base layer applies it to <html>.
+         */}
         <style dangerouslySetInnerHTML={{ __html: phetsarathFontFaceCss() }} />
       </head>
-      <body
-        style={{
-          fontFamily: `"${PHETSARATH_FAMILY}", ui-sans-serif, system-ui, sans-serif`,
-          margin: 0,
-        }}
-      >
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
