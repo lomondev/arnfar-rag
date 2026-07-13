@@ -1,0 +1,6 @@
+# Lao NLP sidecar (Phase 1).
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+# LaoNLP provides dictionary-based word/sentence tokenization + Lao word lists.
+# Pulls pythainlp (Trie + multi-cut segmenter). Dictionary-based → fully offline.
+laonlp==1.3.0

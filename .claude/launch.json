@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "rag-api",
+      "runtimeExecutable": "/home/arnfar/.bun/bin/bun",
+      "runtimeArgs": ["run", "dev:api"],
+      "port": 7730
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "/home/arnfar/.bun/bin/bun",
+      "runtimeArgs": ["run", "dev:web"],
+      "port": 3000
+    }
+  ]
+}

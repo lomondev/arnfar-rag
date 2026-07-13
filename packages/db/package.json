@@ -1,0 +1,23 @@
+{
+  "name": "@arnfar/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "generate": "drizzle-kit generate",
+    "migrate": "drizzle-kit migrate",
+    "index:hnsw": "bun run ./src/scripts/build-hnsw.ts"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.38.3",
+    "postgres": "3.4.5",
+    "uuidv7": "1.0.2"
+  },
+  "devDependencies": {
+    "drizzle-kit": "0.30.1"
+  }
+}

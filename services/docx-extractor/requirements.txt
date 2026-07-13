@@ -1,0 +1,7 @@
+# docx-extractor sidecar (Phase 2).
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+# python-docx walks the document body in order; lxml (bundled) gives us the raw
+# OOXML tree for tracked-changes acceptance and merged-cell detection.
+python-docx==1.1.2

@@ -1,0 +1,34 @@
+import { cors } from "@elysiajs/cors";
+import { Elysia } from "elysia";
+
+import { ingestRoutes } from "./features/ingest/routes.ts";
+import { startWorker } from "./features/ingest/worker.ts";
+import { reviewRoutes } from "./features/review/routes.ts";
+import { searchRoutes } from "./features/search/routes.ts";
+import { env } from "./lib/env.ts";
+
+/**
+ * arnfar-rag-api — the only service that touches Ollama, the Python sidecars, and
+ * Postgres. Next.js talks ONLY to this (CLAUDE.md boundary rule).
+ */
+export const app = new Elysia()
+  .use(cors()) // browser (web:3000) → rag-api (7730); Next never calls sidecars/Ollama
+  .onError(({ error, code, set }) => {
+    if (code === "NOT_FOUND") {
+      set.status = 404;
+      return { error: "not found" };
+    }
+    console.error("[rag-api]", error);
+    set.status = 500;
+    return { error: error instanceof Error ? error.message : "internal error" };
+  })
+  .get("/health", () => ({ status: "ok", service: "arnfar-rag-api", version: "0.3.0" }))
+  .use(ingestRoutes)
+  .use(reviewRoutes)
+  .use(searchRoutes)
+  .listen(env.port);
+
+// Start the background ingestion worker (SKIP LOCKED job queue — decision B).
+startWorker();
+
+console.log(`arnfar-rag-api listening on http://localhost:${app.server?.port ?? env.port}`);

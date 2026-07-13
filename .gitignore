@@ -1,0 +1,42 @@
+# deps
+node_modules/
+.pnp
+.pnp.js
+
+# build output
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# runtime / data
+storage/originals/*
+!storage/originals/.gitkeep
+pgdata/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# logs / os
+*.log
+.DS_Store
+
+# editor
+.vscode/
+.idea/
+
+# datasets: track manifests via git-lfs, ignore local scratch exports
+datasets/**/*.jsonl.tmp
