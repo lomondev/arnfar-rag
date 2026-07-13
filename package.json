@@ -12,6 +12,7 @@
     "bun": ">=1.1.0"
   },
   "scripts": {
+    "dev": "./scripts/dev.sh start",
     "start": "./scripts/dev.sh start",
     "status": "./scripts/dev.sh status",
     "stop": "./scripts/dev.sh stop",

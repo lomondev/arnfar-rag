@@ -16,6 +16,9 @@
 @theme inline {
     --font-heading: var(--font-sans);
     --font-sans: var(--font-sans);
+    --color-chat-user: var(--chat-user);
+    --color-chat-user-foreground: var(--chat-user-foreground);
+    --color-citation: var(--citation);
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -67,72 +70,98 @@
      */
     --font-sans: "Phetsarath OT", ui-sans-serif, system-ui, sans-serif;
 
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
+    /*
+     * Warm "paper" palette. Lao accounting documents are read for long stretches; a
+     * pure-white ground (oklch(1 0 0)) at that dwell time is fatiguing, and the warm
+     * off-white also stops Phetsarath's thin strokes from shimmering against it.
+     * Neutrals carry a slight yellow-red hue (~85deg) — keep any new neutral on that
+     * hue or it will read as a dirty grey next to these.
+     */
+    --background: oklch(0.977 0.005 91);
+    --foreground: oklch(0.235 0.006 67);
     --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
+    --card-foreground: oklch(0.235 0.006 67);
     --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.235 0.006 67);
+
+    /* Terracotta. The only saturated colour in the system — it means "act" or "cited",
+     * never decoration. */
+    --primary: oklch(0.58 0.13 40);
+    --primary-foreground: oklch(0.99 0.003 91);
+
+    --secondary: oklch(0.945 0.008 91);
+    --secondary-foreground: oklch(0.32 0.006 67);
+    --muted: oklch(0.945 0.008 91);
+    --muted-foreground: oklch(0.565 0.009 75);
+    --accent: oklch(0.92 0.01 88);
+    --accent-foreground: oklch(0.235 0.006 67);
     --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+    --border: oklch(0.905 0.008 88);
+    --input: oklch(0.905 0.008 88);
+    --ring: oklch(0.58 0.13 40);
+    --chart-1: oklch(0.58 0.13 40);
+    --chart-2: oklch(0.65 0.09 55);
+    --chart-3: oklch(0.55 0.02 85);
+    --chart-4: oklch(0.44 0.015 80);
+    --chart-5: oklch(0.32 0.01 75);
+    --radius: 0.75rem;
+
+    --sidebar: oklch(0.948 0.009 91);
+    --sidebar-foreground: oklch(0.32 0.006 67);
+    --sidebar-primary: oklch(0.58 0.13 40);
+    --sidebar-primary-foreground: oklch(0.99 0.003 91);
+    --sidebar-accent: oklch(0.905 0.011 88);
+    --sidebar-accent-foreground: oklch(0.235 0.006 67);
+    --sidebar-border: oklch(0.895 0.009 88);
+    --sidebar-ring: oklch(0.58 0.13 40);
+
+    /* Chat surface: the user's turn sits in a tinted bubble, the assistant's answer is
+     * unboxed prose — so the eye lands on the answer, not on chrome around it. */
+    --chat-user: oklch(0.925 0.011 88);
+    --chat-user-foreground: oklch(0.235 0.006 67);
+    --citation: oklch(0.55 0.14 40);
 }
 
 .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
+    --background: oklch(0.235 0.005 75);
+    --foreground: oklch(0.945 0.006 91);
+    --card: oklch(0.275 0.005 75);
+    --card-foreground: oklch(0.945 0.006 91);
+    --popover: oklch(0.275 0.005 75);
+    --popover-foreground: oklch(0.945 0.006 91);
+
+    /* Same terracotta, lifted just enough to clear AA on the dark ground. */
+    --primary: oklch(0.63 0.13 40);
+    --primary-foreground: oklch(0.99 0.003 91);
+
+    --secondary: oklch(0.32 0.006 75);
+    --secondary-foreground: oklch(0.945 0.006 91);
+    --muted: oklch(0.32 0.006 75);
+    --muted-foreground: oklch(0.68 0.008 80);
+    --accent: oklch(0.345 0.007 75);
+    --accent-foreground: oklch(0.945 0.006 91);
     --destructive: oklch(0.704 0.191 22.216);
     --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
+    --input: oklch(1 0 0 / 14%);
+    --ring: oklch(0.63 0.13 40);
+    --chart-1: oklch(0.63 0.13 40);
+    --chart-2: oklch(0.7 0.09 55);
+    --chart-3: oklch(0.68 0.02 85);
+    --chart-4: oklch(0.55 0.015 80);
+    --chart-5: oklch(0.42 0.01 75);
+
+    --sidebar: oklch(0.205 0.005 75);
+    --sidebar-foreground: oklch(0.82 0.007 85);
+    --sidebar-primary: oklch(0.63 0.13 40);
+    --sidebar-primary-foreground: oklch(0.99 0.003 91);
+    --sidebar-accent: oklch(0.29 0.006 75);
+    --sidebar-accent-foreground: oklch(0.945 0.006 91);
+    --sidebar-border: oklch(1 0 0 / 8%);
+    --sidebar-ring: oklch(0.63 0.13 40);
+
+    --chat-user: oklch(0.32 0.007 75);
+    --chat-user-foreground: oklch(0.945 0.006 91);
+    --citation: oklch(0.7 0.12 42);
 }
 
 @layer base {

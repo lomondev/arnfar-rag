@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { Button } from "@arnfar/ui/components/button";
+
 const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
 
 interface EvalRun {
@@ -20,11 +22,23 @@ interface EvalRun {
 
 const GATE = { recallAt5: 0.7, faithfulness: 0.8, p95LatencyMs: 150 };
 
-function cell(value: string | null, threshold: number, higherIsBetter = true) {
-  if (value === null) return <span style={{ color: "#9ca3af" }}>—</span>;
+function Metric({
+  value,
+  threshold,
+  higherIsBetter = true,
+}: {
+  value: string | null;
+  threshold: number;
+  higherIsBetter?: boolean;
+}) {
+  if (value === null) return <span className="text-muted-foreground">—</span>;
   const n = Number(value);
   const pass = higherIsBetter ? n >= threshold : n <= threshold;
-  return <span style={{ color: pass ? "#16a34a" : "#dc2626" }}>{n.toFixed(3)}</span>;
+  return (
+    <span className={pass ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}>
+      {n.toFixed(3)}
+    </span>
+  );
 }
 
 export function EvalClient() {
@@ -62,42 +76,66 @@ export function EvalClient() {
   };
 
   return (
-    <main style={{ padding: "1rem 1.5rem" }}>
-      <div style={{ display: "flex", gap: "1rem", alignItems: "center", marginBottom: "1rem" }}>
-        <h2 style={{ margin: 0 }}>Eval</h2>
-        <button disabled={busy} onClick={() => runMatrix(false)}>Run retrieval matrix</button>
-        <button disabled={busy} onClick={() => runMatrix(true)}>Run matrix + faithfulness</button>
-        <span style={{ color: "#6b7280", fontSize: "0.85rem" }}>{status}</span>
+    <main className="px-6 py-5">
+      <div className="mb-2 flex items-center gap-3">
+        <h2 className="text-lg font-semibold">Eval</h2>
+        <Button variant="outline" disabled={busy} onClick={() => runMatrix(false)}>
+          Run retrieval matrix
+        </Button>
+        <Button variant="outline" disabled={busy} onClick={() => runMatrix(true)}>
+          Run matrix + faithfulness
+        </Button>
+        <span className="text-muted-foreground text-sm">{status}</span>
       </div>
-      <p style={{ color: "#6b7280", fontSize: "0.85rem" }}>
+      <p className="text-muted-foreground mb-3 text-sm">
         GATE 6 (hybrid): recall@5 ≥ 0.70 · faithfulness ≥ 0.80 · p95 &lt; 150ms · abstention ≥ 0.90.
-        Green/red = threshold. Meaningful only on a real corpus.
+        Green/red = threshold.
       </p>
 
-      <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "0.88rem" }}>
-        <thead>
-          <tr style={{ textAlign: "left", borderBottom: "2px solid #e5e7eb" }}>
-            {["retriever", "gen_model", "n", "recall@5", "recall@10", "MRR", "faithful", "p95 ms", "notes"].map((h) => (
-              <th key={h} style={{ padding: "0.4rem" }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {runs.map((r) => (
-            <tr key={r.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-              <td style={{ padding: "0.4rem", fontWeight: 600 }}>{r.retriever}</td>
-              <td style={{ padding: "0.4rem" }}>{r.genModel}</td>
-              <td style={{ padding: "0.4rem" }}>{r.nQueries}</td>
-              <td style={{ padding: "0.4rem" }}>{cell(r.recallAt5, GATE.recallAt5)}</td>
-              <td style={{ padding: "0.4rem" }}>{r.recallAt10 ? Number(r.recallAt10).toFixed(3) : "—"}</td>
-              <td style={{ padding: "0.4rem" }}>{r.mrr ? Number(r.mrr).toFixed(3) : "—"}</td>
-              <td style={{ padding: "0.4rem" }}>{cell(r.faithfulness, GATE.faithfulness)}</td>
-              <td style={{ padding: "0.4rem" }}>{r.p95LatencyMs === null ? "—" : cell(String(r.p95LatencyMs), GATE.p95LatencyMs, false)}</td>
-              <td style={{ padding: "0.4rem", color: "#64748b" }}>{r.notes ?? ""}</td>
+      <div className="overflow-x-auto rounded-lg border">
+        <table className="w-full text-sm">
+          <thead className="text-muted-foreground border-b text-left">
+            <tr>
+              {["retriever", "gen_model", "n", "recall@5", "recall@10", "MRR", "faithful", "p95 ms", "notes"].map(
+                (h) => (
+                  <th key={h} className="p-2 font-medium">
+                    {h}
+                  </th>
+                ),
+              )}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {runs.map((r) => (
+              <tr key={r.id} className="border-b last:border-0">
+                <td className="p-2 font-medium">{r.retriever}</td>
+                <td className="text-muted-foreground p-2">{r.genModel}</td>
+                <td className="p-2">{r.nQueries}</td>
+                <td className="p-2">
+                  <Metric value={r.recallAt5} threshold={GATE.recallAt5} />
+                </td>
+                <td className="p-2">{r.recallAt10 ? Number(r.recallAt10).toFixed(3) : "—"}</td>
+                <td className="p-2">{r.mrr ? Number(r.mrr).toFixed(3) : "—"}</td>
+                <td className="p-2">
+                  <Metric value={r.faithfulness} threshold={GATE.faithfulness} />
+                </td>
+                <td className="p-2">
+                  {r.p95LatencyMs === null ? (
+                    "—"
+                  ) : (
+                    <Metric
+                      value={String(r.p95LatencyMs)}
+                      threshold={GATE.p95LatencyMs}
+                      higherIsBetter={false}
+                    />
+                  )}
+                </td>
+                <td className="text-muted-foreground p-2">{r.notes ?? ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </main>
   );
 }
