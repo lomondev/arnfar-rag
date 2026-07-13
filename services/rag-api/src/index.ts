@@ -42,7 +42,9 @@ export const app = new Elysia()
   .use(evalRoutes)
   .use(chatRoutes)
   .use(laoRoutes)
-  .listen(env.port);
+  // idleTimeout 255s (Bun max): SSE chat streams idle between the citations frame and
+  // the LLM's first token (prompt eval) — the 10s default would kill the stream.
+  .listen({ port: env.port, idleTimeout: 255 });
 
 // Start the background ingestion worker (SKIP LOCKED job queue — decision B).
 startWorker();

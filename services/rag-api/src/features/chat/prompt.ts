@@ -51,6 +51,10 @@ export function buildSystemPrompt(
     .join("\n");
 }
 
+/** Cap each source in the prompt so a large table chunk can't bloat the context
+ *  and stall generation. The full text still reaches the UI via the citations frame. */
+const MAX_SOURCE_CHARS = 700;
+
 export function buildContext(sources: CitationSource[]): string {
   if (!sources.length) return "(no relevant documents found)";
   return sources
@@ -58,7 +62,11 @@ export function buildContext(sources: CitationSource[]): string {
       const head = s.headingPath.length ? s.headingPath.join(" › ") : s.title;
       const auth = s.authority ? `, authority: ${s.authority}` : "";
       const eff = s.effectiveDate ? `, effective: ${s.effectiveDate}` : "";
-      return `[${s.n}] (${head}${auth}${eff})\n${s.content}`;
+      const body =
+        s.content.length > MAX_SOURCE_CHARS
+          ? `${s.content.slice(0, MAX_SOURCE_CHARS)}…`
+          : s.content;
+      return `[${s.n}] (${head}${auth}${eff})\n${body}`;
     })
     .join("\n\n");
 }

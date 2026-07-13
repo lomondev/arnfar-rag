@@ -20,6 +20,7 @@ out/
 storage/originals/*
 !storage/originals/.gitkeep
 pgdata/
+backups/
 
 # python
 __pycache__/
