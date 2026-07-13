@@ -1,10 +1,12 @@
 import { cors } from "@elysiajs/cors";
 import { Elysia } from "elysia";
 
+import { chatRoutes } from "./features/chat/routes.ts";
 import { evalRoutes } from "./features/eval/routes.ts";
 import { exportRoutes } from "./features/export/routes.ts";
 import { glossaryRoutes } from "./features/glossary/routes.ts";
 import { ingestRoutes } from "./features/ingest/routes.ts";
+import { laoRoutes } from "./features/lao/routes.ts";
 import { startWorker } from "./features/ingest/worker.ts";
 import { qaRoutes } from "./features/qa/routes.ts";
 import { reviewRoutes } from "./features/review/routes.ts";
@@ -38,6 +40,8 @@ export const app = new Elysia()
   .use(glossaryRoutes)
   .use(exportRoutes)
   .use(evalRoutes)
+  .use(chatRoutes)
+  .use(laoRoutes)
   .listen(env.port);
 
 // Start the background ingestion worker (SKIP LOCKED job queue — decision B).

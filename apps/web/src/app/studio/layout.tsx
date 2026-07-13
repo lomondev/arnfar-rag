@@ -5,6 +5,7 @@ const TABS = [
   { href: "/studio/qa", label: "QA" },
   { href: "/studio/glossary", label: "Glossary" },
   { href: "/studio/eval", label: "Eval" },
+  { href: "/studio/lao-check", label: "Lao check" },
   { href: "/studio/export", label: "Export" },
 ];
 

@@ -27,12 +27,29 @@ export interface NormalizeResult {
   lang: string;
 }
 
+export interface SpellToken {
+  token: string;
+  is_lao: boolean;
+  in_dictionary: boolean;
+  suggestions: string[];
+}
+
+export interface SpellcheckResult {
+  tokens: SpellToken[];
+  unknown_count: number;
+  lang: string;
+}
+
 export function segment(text: string): Promise<SegmentResult> {
   return postJson<SegmentResult>(`${env.laoNlpUrl}/segment`, { text });
 }
 
 export function normalize(text: string): Promise<NormalizeResult> {
   return postJson<NormalizeResult>(`${env.laoNlpUrl}/normalize`, { text });
+}
+
+export function spellcheck(text: string): Promise<SpellcheckResult> {
+  return postJson<SpellcheckResult>(`${env.laoNlpUrl}/spellcheck`, { text });
 }
 
 // ── docx-extractor ───────────────────────────────────────────────────────────
