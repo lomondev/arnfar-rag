@@ -4,6 +4,7 @@ const TABS = [
   { href: "/studio/review", label: "Review" },
   { href: "/studio/qa", label: "QA" },
   { href: "/studio/glossary", label: "Glossary" },
+  { href: "/studio/eval", label: "Eval" },
   { href: "/studio/export", label: "Export" },
 ];
 

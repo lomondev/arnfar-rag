@@ -11,6 +11,8 @@ export const env = {
   ollamaBaseUrl: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434",
   embedModel: process.env.OLLAMA_EMBED_MODEL ?? "bge-m3",
   genModel: process.env.OLLAMA_GEN_MODEL ?? "qwen3:8b",
+  // Cross-model judge (CLAUDE.md decision 4) — must differ from the generator.
+  genModelAlt: process.env.OLLAMA_GEN_MODEL_ALT ?? "gemma3:12b",
   embedConcurrency: Number(process.env.OLLAMA_EMBED_CONCURRENCY ?? 4),
 
   laoNlpUrl: process.env.LAO_NLP_URL ?? "http://localhost:7731",
