@@ -43,9 +43,9 @@ try {
         FROM generate_series(1, 1024)
       ) v`;
 
-    const [{ n }] = await sql<{ n: number }[]>`
+    const rows = await sql<{ n: number }[]>`
       SELECT count(*)::int n FROM rag_chunk WHERE hf_id = ${BENCH_HF}`;
-    console.log(`bench chunks now: ${n}`);
+    console.log(`bench chunks now: ${rows[0]?.n ?? 0}`);
   }
 } finally {
   await sql.end();

@@ -1,8 +1,11 @@
 import { cors } from "@elysiajs/cors";
 import { Elysia } from "elysia";
 
+import { exportRoutes } from "./features/export/routes.ts";
+import { glossaryRoutes } from "./features/glossary/routes.ts";
 import { ingestRoutes } from "./features/ingest/routes.ts";
 import { startWorker } from "./features/ingest/worker.ts";
+import { qaRoutes } from "./features/qa/routes.ts";
 import { reviewRoutes } from "./features/review/routes.ts";
 import { searchRoutes } from "./features/search/routes.ts";
 import { env } from "./lib/env.ts";
@@ -18,6 +21,10 @@ export const app = new Elysia()
       set.status = 404;
       return { error: "not found" };
     }
+    if (code === "VALIDATION") {
+      set.status = 422;
+      return { error: "validation", message: error.message };
+    }
     console.error("[rag-api]", error);
     set.status = 500;
     return { error: error instanceof Error ? error.message : "internal error" };
@@ -26,6 +33,9 @@ export const app = new Elysia()
   .use(ingestRoutes)
   .use(reviewRoutes)
   .use(searchRoutes)
+  .use(qaRoutes)
+  .use(glossaryRoutes)
+  .use(exportRoutes)
   .listen(env.port);
 
 // Start the background ingestion worker (SKIP LOCKED job queue — decision B).

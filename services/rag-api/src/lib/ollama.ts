@@ -84,3 +84,35 @@ export async function embedOne(text: string): Promise<number[]> {
   const [vec] = await embedBatch([text]);
   return vec!;
 }
+
+interface GenerateResponse {
+  response?: string;
+}
+
+export interface GenerateOptions {
+  system?: string;
+  temperature?: number;
+  maxTokens?: number;
+  json?: boolean;
+  model?: string;
+}
+
+/** Non-streaming generation (qwen3:8b by default). `/no_think` + think:false keep
+ *  qwen3 out of its slow reasoning mode for structured drafting. */
+export async function generate(prompt: string, opts: GenerateOptions = {}): Promise<string> {
+  const body: Record<string, unknown> = {
+    model: opts.model ?? env.genModel,
+    prompt: opts.json ? `${prompt}\n/no_think` : prompt,
+    stream: false,
+    think: false,
+    options: {
+      temperature: opts.temperature ?? 0.2,
+      num_predict: opts.maxTokens ?? 512,
+    },
+  };
+  if (opts.system) body.system = opts.system;
+  if (opts.json) body.format = "json";
+  const res = await postWithRetry("/api/generate", body);
+  const data = (await res.json()) as GenerateResponse;
+  return (data.response ?? "").trim();
+}
