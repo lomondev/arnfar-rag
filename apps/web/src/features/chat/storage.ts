@@ -110,10 +110,23 @@ export function loadConversations(): Conversation[] {
     if (raw === null) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isConversation).sort((a, b) => b.updatedAt - a.updatedAt);
+    return parsed
+      .filter(isConversation)
+      .map(dropAbandonedDraft)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
   } catch {
     return [];
   }
+}
+
+/**
+ * Close a tab mid-answer and the empty assistant draft is what gets persisted. On the next
+ * load no stream is running, so it would render as a "thinking" indicator that never
+ * resolves. Nothing can revive that turn — the question stays, the dead draft goes.
+ */
+function dropAbandonedDraft(c: Conversation): Conversation {
+  const messages = c.messages.filter((m) => !(m.role === "assistant" && m.content === ""));
+  return messages.length === c.messages.length ? c : { ...c, messages };
 }
 
 export function saveConversations(list: readonly Conversation[]): void {

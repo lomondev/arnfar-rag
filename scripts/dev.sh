@@ -4,6 +4,8 @@
 #   ./scripts/dev.sh          start everything that is down, then print status
 #   ./scripts/dev.sh status   check only, start nothing
 #   ./scripts/dev.sh stop     stop the host processes (rag-api, web) and the containers
+#   ./scripts/dev.sh reset    delete apps/web/.next — fixes a web app that 500s on every
+#                             route with "Cannot find module './430.js'"
 #   ./scripts/dev.sh logs api|web|lao-nlp|docx-extractor|postgres
 #
 # Ports and URLs are read from .env — never hardcoded. Postgres is on 5433 here
@@ -58,6 +60,34 @@ http_ok() { curl -fsS --max-time 3 "$1" >/dev/null 2>&1; }
 web_up()  { [[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://localhost:$WEB_PORT" 2>/dev/null)" == "200" ]]; }
 
 docker_ok() { docker info >/dev/null 2>&1; }
+
+# Every PID listening on a port. `bun run dev:web` spawns `next dev`, which spawns the
+# actual server, and killing the wrapper does NOT reliably take the server with it — the
+# orphan keeps the port and keeps serving. So we stop by port, not by recorded PID.
+pids_on_port() {
+  ss -ltnpH "sport = :$1" 2>/dev/null | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u
+}
+
+# TERM, wait, then KILL. Returns non-zero only if the port is STILL held afterwards.
+kill_port() {
+  local port="$1" pids
+  pids="$(pids_on_port "$port")"
+  [[ -z "$pids" ]] && return 0
+
+  # shellcheck disable=SC2086
+  kill -TERM $pids 2>/dev/null
+  local i=0
+  while (( i < 10 )); do
+    sleep 1; ((i++))
+    [[ -z "$(pids_on_port "$port")" ]] && return 0
+  done
+
+  pids="$(pids_on_port "$port")"
+  # shellcheck disable=SC2086
+  [[ -n "$pids" ]] && kill -KILL $pids 2>/dev/null
+  sleep 1
+  [[ -z "$(pids_on_port "$port")" ]]
+}
 
 pg_up()   { tcp_up "$POSTGRES_HOST" "$POSTGRES_PORT"; }
 lao_up()  { http_ok "$LAO_NLP_URL/health"; }
@@ -131,11 +161,30 @@ compose_up() {
 }
 
 start_host_proc() {
-  # start_host_proc <name> <bun-script> <probe-fn> <wait-secs>
-  local name="$1" script="$2" probe="$3" secs="$4"
+  # start_host_proc <name> <bun-script> <probe-fn> <wait-secs> <port>
+  local name="$1" script="$2" probe="$3" secs="$4" port="$5"
   local pidfile="$RUN_DIR/$name.pid" log="$LOG_DIR/$name.log"
 
   if "$probe"; then ok "$name" "already running"; return 0; fi
+
+  # A just-killed server can hold the port for a moment while it tears down, so give it a
+  # few seconds to let go before concluding someone else owns it.
+  local waited=0
+  while tcp_up localhost "$port" && (( waited < 6 )); do
+    sleep 1; ((waited++))
+  done
+
+  # Health-down but port-still-held means something else owns it — a server stuck
+  # mid-compile, or one someone started by hand. Starting a second `next dev` here would be
+  # actively destructive: both processes write the same .next/, and the build dir ends up
+  # corrupt ("Cannot find module './430.js'", 404s on every chunk). Refuse and say so.
+  if tcp_up localhost "$port"; then
+    bad "$name" "port $port is held by another process, but it is not healthy"
+    printf '     %sSomething else is already serving :%s (a stale dev server, or one you started\n' "$DIM" "$port"
+    printf '     by hand). Not starting a second one — two servers sharing .next/ corrupts it.\n'
+    printf '     Stop it first:  ./scripts/dev.sh stop   (or: pkill -f "next dev")%s\n' "$N"
+    return 1
+  fi
 
   step "starting $name  ${DIM}(log: .logs/$name.log)${N}"
   nohup bun run "$script" >"$log" 2>&1 &
@@ -144,8 +193,12 @@ start_host_proc() {
   if wait_for "$probe" "$secs" "$name"; then
     ok "$name" "up"
   else
+    # Leaving a half-started server holding the port is worse than not starting one: the
+    # next run would find the port busy and unhealthy, and refuse to start anything.
     bad "$name" "did not come up in ${secs}s — last lines of .logs/$name.log:"
     tail -n 15 "$log" | sed 's/^/       /'
+    kill_port "$port" >/dev/null 2>&1
+    rm -f "$pidfile"
     return 1
   fi
 }
@@ -177,13 +230,13 @@ do_start() {
 
   # rag-api needs postgres; web needs rag-api. Start in order, don't bother if a dep is down.
   if pg_up; then
-    start_host_proc rag-api dev:api api_up 40
+    start_host_proc rag-api dev:api api_up 40 "$RAG_API_PORT"
   else
     warn "rag-api" "skipped — postgres is down"
   fi
 
   if api_up; then
-    start_host_proc web dev:web web_up 60
+    start_host_proc web dev:web web_up 60 "$WEB_PORT"
   else
     warn "web" "skipped — rag-api is down"
   fi
@@ -200,18 +253,11 @@ do_start() {
 
 do_stop() {
   head_ "Stopping host processes"
-  for name in web rag-api ollama; do
-    local_pidfile="$RUN_DIR/$name.pid"
-    if [[ -f "$local_pidfile" ]] && kill -0 "$(cat "$local_pidfile")" 2>/dev/null; then
-      pkill -TERM -P "$(cat "$local_pidfile")" 2>/dev/null
-      kill -TERM "$(cat "$local_pidfile")" 2>/dev/null
-      ok "$name" "stopped"
-      rm -f "$local_pidfile"
-    else
-      warn "$name" "not started by this script (leave it alone)"
-      rm -f "$local_pidfile"
-    fi
-  done
+  # Stop by port so we also collect servers this script did not start (and orphans it
+  # failed to). Ollama is left alone: it is a shared host service, other things use it,
+  # and it is not ours to kill.
+  stop_one web "$WEB_PORT"
+  stop_one rag-api "$RAG_API_PORT"
 
   head_ "Stopping containers"
   if docker_ok; then
@@ -220,6 +266,42 @@ do_stop() {
     bad "docker" "daemon unreachable"
   fi
   echo
+}
+
+# Next's dev build dir is not crash-safe: kill a `next dev` mid-write (or let two of them
+# share it) and it serves 500s with "Cannot find module './430.js'" and 404s on every
+# chunk, forever, because nothing invalidates it. Deleting it is the only fix, and it is
+# always safe — it is a cache.
+do_reset() {
+  head_ "Resetting the web build cache"
+
+  # Deleting .next under a LIVE server is what corrupts it in the first place — the server
+  # keeps serving from a directory that no longer exists and 500s every route. So the
+  # delete only happens once the port is provably free.
+  stop_one web "$WEB_PORT"
+  if [[ -n "$(pids_on_port "$WEB_PORT")" ]]; then
+    bad ".next" "not deleted — :$WEB_PORT is still held, and deleting the cache under a"
+    printf '     %srunning server is exactly what corrupts it. Kill it first.%s\n\n' "$DIM" "$N"
+    exit 1
+  fi
+
+  rm -rf "$ROOT/apps/web/.next"
+  ok ".next" "deleted"
+  printf '\n%sNow run: ./scripts/dev.sh%s\n\n' "$DIM" "$N"
+}
+
+stop_one() {
+  local name="$1" port="$2"
+  rm -f "$RUN_DIR/$name.pid"
+  if [[ -z "$(pids_on_port "$port")" ]]; then
+    warn "$name" "not running"
+    return 0
+  fi
+  if kill_port "$port"; then
+    ok "$name" "stopped"
+  else
+    bad "$name" "could not free port $port"
+  fi
 }
 
 do_logs() {
@@ -237,6 +319,7 @@ case "${1:-start}" in
   start)  do_start ;;
   status) print_status ;;
   stop)   do_stop ;;
+  reset)  do_reset ;;
   logs)   shift; do_logs "${1-}" ;;
-  *) echo "usage: $0 [start|status|stop|logs <service>]"; exit 1 ;;
+  *) echo "usage: $0 [start|status|stop|reset|logs <service>]"; exit 1 ;;
 esac

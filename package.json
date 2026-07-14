@@ -16,6 +16,7 @@
     "start": "./scripts/dev.sh start",
     "status": "./scripts/dev.sh status",
     "stop": "./scripts/dev.sh stop",
+    "reset": "./scripts/dev.sh reset",
     "typecheck": "bun run --filter '*' typecheck",
     "lint": "bun run --filter '*' lint",
     "db:generate": "bun --env-file=.env run --filter '@arnfar/db' generate",

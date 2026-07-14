@@ -1,0 +1,78 @@
+{
+  "dataset": "arnfar-lao-accounting",
+  "version": "0.1.0",
+  "created_at": "2026-07-13T06:51:43.614Z",
+  "shareable": true,
+  "counts": {
+    "chunks": 12,
+    "glossary": 4,
+    "chart_of_accounts": 5,
+    "qa_train": 4,
+    "qa_dev": 0,
+    "qa_test": 0,
+    "eval_set": 0
+  },
+  "files": [
+    {
+      "name": "chunks.jsonl",
+      "sha256": "7d38bc8964c6a6d0e84fd4e082eaccc7663219ecbe5cf88fe1f47b31f35ef6c5",
+      "bytes": 15865,
+      "records": 12
+    },
+    {
+      "name": "glossary.jsonl",
+      "sha256": "0e71a64c6bf8ecd3ff2036da9e05bee9021dc5db544eb567d2a476ae5f823230",
+      "bytes": 953,
+      "records": 4
+    },
+    {
+      "name": "chart_of_accounts.jsonl",
+      "sha256": "2720104425a91ecca98170fb245f8a25d51f3236edfca4dbebec3954da80cb90",
+      "bytes": 866,
+      "records": 5
+    },
+    {
+      "name": "qa_train.jsonl",
+      "sha256": "c68fc61958b3cfb1c759e68a071e4e217984a0fb9e87733eae79724aca2dfcb6",
+      "bytes": 1569,
+      "records": 4
+    },
+    {
+      "name": "qa_dev.jsonl",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "records": 0
+    },
+    {
+      "name": "qa_test.jsonl",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "records": 0
+    },
+    {
+      "name": "eval_set.jsonl",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "records": 0
+    }
+  ],
+  "source_documents": [
+    {
+      "id": "019f5977-a594-760c-9c9a-6022f1c68879",
+      "title": "Chart of Accounts (synthetic)",
+      "collection": "coa",
+      "authority": null,
+      "effective_date": null,
+      "license": "internal"
+    },
+    {
+      "id": "019f5975-d114-73c1-92de-4188f211a1a3",
+      "title": "HEIMS Presentation",
+      "collection": "sop",
+      "authority": null,
+      "effective_date": null,
+      "license": "internal"
+    }
+  ],
+  "warnings": []
+}
