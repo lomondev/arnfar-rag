@@ -1,9 +1,13 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "types": [],
     "rootDir": "src",
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "paths": {
+      "@arnfar/ui/*": ["./src/*"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"]
 }

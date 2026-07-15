@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { Badge } from "@arnfar/ui/components/badge";
+import { Button } from "@arnfar/ui/components/button";
+import { Input } from "@arnfar/ui/components/input";
+
 import { fetchTerms, mineGlossary, patchTerm, verifyTerm, type Term } from "./api";
 
 export function GlossaryClient() {
@@ -17,70 +21,83 @@ export function GlossaryClient() {
   const verifiedCount = terms.filter((t) => t.verified).length;
 
   return (
-    <main style={{ padding: "1rem 1.5rem" }}>
-      <div style={{ display: "flex", gap: "1rem", alignItems: "center", marginBottom: "1rem" }}>
-        <h2 style={{ margin: 0 }}>Glossary</h2>
-        <span style={{ color: "#6b7280" }}>
+    <main className="px-6 py-5">
+      <div className="mb-4 flex items-center gap-3">
+        <h2 className="text-lg font-semibold">Glossary</h2>
+        <span className="text-muted-foreground text-sm">
           {verifiedCount}/{terms.length} verified
         </span>
-        <button
+        <Button
+          className="ml-auto"
+          variant="outline"
           onClick={async () => {
             setStatus("mining…");
             const r = (await mineGlossary({ minFreq: 2, gloss: false })) as { created: unknown[] };
             setStatus(`mined ${r.created.length} candidates`);
             load();
           }}
-          style={{ marginLeft: "auto" }}
         >
           Mine candidates
-        </button>
-        <span style={{ color: "#6b7280", fontSize: "0.85rem" }}>{status}</span>
+        </Button>
+        <span className="text-muted-foreground text-sm">{status}</span>
       </div>
 
-      <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "0.9rem" }}>
-        <thead>
-          <tr style={{ textAlign: "left", borderBottom: "2px solid #e5e7eb" }}>
-            <th style={{ padding: "0.4rem" }}>term_lo</th>
-            <th style={{ padding: "0.4rem" }}>segmented</th>
-            <th style={{ padding: "0.4rem" }}>term_en (gloss)</th>
-            <th style={{ padding: "0.4rem" }}>status</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {terms.map((t) => (
-            <tr key={t.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-              <td lang="lo" style={{ padding: "0.4rem", fontSize: "1.05rem" }}>{t.termLo}</td>
-              <td lang="lo" style={{ padding: "0.4rem", color: "#64748b" }}>{t.termLoSeg}</td>
-              <td style={{ padding: "0.4rem" }}>
-                <input
-                  defaultValue={t.termEn === "(needs gloss)" ? "" : t.termEn}
-                  placeholder="english…"
-                  onChange={(e) => setDrafts((d) => ({ ...d, [t.id]: e.target.value }))}
-                  style={{ padding: "0.2rem", width: 160 }}
-                />
-              </td>
-              <td style={{ padding: "0.4rem", color: t.verified ? "#16a34a" : "#9ca3af" }}>
-                {t.verified ? "● verified" : "○ draft"}
-              </td>
-              <td style={{ padding: "0.4rem", whiteSpace: "nowrap" }}>
-                <button
-                  onClick={async () => {
-                    const en = drafts[t.id] ?? t.termEn;
-                    if (en && en !== t.termEn) await patchTerm(t.id, { termEn: en });
-                    await verifyTerm(t.id);
-                    setStatus(`verified ${t.termLo}`);
-                    load();
-                  }}
-                  disabled={t.verified}
-                >
-                  Verify
-                </button>
-              </td>
+      <div className="overflow-x-auto rounded-lg border">
+        <table className="w-full text-sm">
+          <thead className="text-muted-foreground border-b text-left">
+            <tr>
+              <th className="p-2 font-medium">term_lo</th>
+              <th className="p-2 font-medium">segmented</th>
+              <th className="p-2 font-medium">term_en (gloss)</th>
+              <th className="p-2 font-medium">status</th>
+              <th className="p-2" />
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {terms.map((t) => (
+              <tr key={t.id} className="hover:bg-muted/40 border-b last:border-0">
+                <td lang="lo" className="p-2 text-base">
+                  {t.termLo}
+                </td>
+                <td lang="lo" className="text-muted-foreground p-2">
+                  {t.termLoSeg}
+                </td>
+                <td className="p-2">
+                  <Input
+                    defaultValue={t.termEn === "(needs gloss)" ? "" : t.termEn}
+                    placeholder="english…"
+                    className="w-40"
+                    onChange={(e) => setDrafts((d) => ({ ...d, [t.id]: e.target.value }))}
+                  />
+                </td>
+                <td className="p-2">
+                  {t.verified ? (
+                    <Badge variant="secondary">● verified</Badge>
+                  ) : (
+                    <Badge variant="muted">○ draft</Badge>
+                  )}
+                </td>
+                <td className="p-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={t.verified}
+                    onClick={async () => {
+                      const en = drafts[t.id] ?? t.termEn;
+                      if (en && en !== t.termEn) await patchTerm(t.id, { termEn: en });
+                      await verifyTerm(t.id);
+                      setStatus(`verified ${t.termLo}`);
+                      load();
+                    }}
+                  >
+                    Verify
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </main>
   );
 }

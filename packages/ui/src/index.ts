@@ -1,4 +1,4 @@
-export { cn } from "./cn.ts";
+export { cn } from "./lib/utils.ts";
 export {
   PHETSARATH_FAMILY,
   PHETSARATH_SOURCES,

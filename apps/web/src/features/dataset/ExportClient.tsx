@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 
+import { Button } from "@arnfar/ui/components/button";
+import { Input } from "@arnfar/ui/components/input";
+
 import { runExport, type ExportResult } from "./api";
 
 export function ExportClient() {
@@ -11,23 +14,29 @@ export function ExportClient() {
   const [busy, setBusy] = useState(false);
 
   return (
-    <main style={{ padding: "1rem 1.5rem", maxWidth: 820 }}>
-      <h2>Export dataset</h2>
-      <p style={{ color: "#6b7280" }}>
-        Writes an immutable, versioned dataset to <code>datasets/lao-accounting/vX.Y.Z/</code>.
-        Only verified rows; rejected chunks and (when shareable) client-confidential rows are
-        excluded; QA is split by document.
+    <main className="max-w-3xl px-6 py-5">
+      <h2 className="text-lg font-semibold">Export dataset</h2>
+      <p className="text-muted-foreground mt-1 text-sm">
+        Writes an immutable, versioned dataset to{" "}
+        <code className="bg-muted rounded px-1">datasets/lao-accounting/vX.Y.Z/</code>. Verified rows
+        only; rejected chunks and (when shareable) client-confidential rows are excluded; QA is split
+        by document.
       </p>
 
-      <div style={{ display: "flex", gap: "1rem", alignItems: "center", margin: "1rem 0" }}>
-        <label>
-          version&nbsp;
-          <input value={version} onChange={(e) => setVersion(e.target.value)} style={{ padding: "0.3rem", width: 90 }} />
+      <div className="my-4 flex items-center gap-3">
+        <label className="flex items-center gap-2 text-sm">
+          version
+          <Input value={version} onChange={(e) => setVersion(e.target.value)} className="w-24" />
         </label>
-        <label>
-          <input type="checkbox" checked={shareable} onChange={(e) => setShareable(e.target.checked)} /> shareable
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={shareable}
+            onChange={(e) => setShareable(e.target.checked)}
+          />
+          shareable
         </label>
-        <button
+        <Button
           disabled={busy}
           onClick={async () => {
             setBusy(true);
@@ -36,35 +45,41 @@ export function ExportClient() {
           }}
         >
           {busy ? "exporting…" : "Export"}
-        </button>
+        </Button>
       </div>
 
-      {result?.error && <p style={{ color: "#dc2626" }}>Error: {result.error}</p>}
+      {result?.error && <p className="text-destructive">Error: {result.error}</p>}
       {result && !result.error && (
         <div>
-          <p style={{ color: "#16a34a" }}>✓ wrote {result.dir}</p>
-          <table style={{ borderCollapse: "collapse", fontSize: "0.85rem" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "2px solid #e5e7eb" }}>
-                <th style={{ padding: "0.3rem 0.6rem" }}>file</th>
-                <th style={{ padding: "0.3rem 0.6rem" }}>records</th>
-                <th style={{ padding: "0.3rem 0.6rem" }}>sha256</th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.files.map((f) => (
-                <tr key={f.name} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                  <td style={{ padding: "0.3rem 0.6rem" }}>{f.name}</td>
-                  <td style={{ padding: "0.3rem 0.6rem" }}>{f.records}</td>
-                  <td style={{ padding: "0.3rem 0.6rem", fontFamily: "monospace", color: "#64748b" }}>
-                    {f.sha256.slice(0, 16)}…
-                  </td>
+          <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
+            ✓ wrote {result.dir}
+          </p>
+          <div className="mt-2 overflow-x-auto rounded-lg border">
+            <table className="w-full text-sm">
+              <thead className="text-muted-foreground border-b text-left">
+                <tr>
+                  <th className="p-2 font-medium">file</th>
+                  <th className="p-2 font-medium">records</th>
+                  <th className="p-2 font-medium">sha256</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {result.files.map((f) => (
+                  <tr key={f.name} className="border-b last:border-0">
+                    <td className="p-2">{f.name}</td>
+                    <td className="p-2">{f.records}</td>
+                    <td className="text-muted-foreground p-2 font-mono">{f.sha256.slice(0, 16)}…</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           {result.warnings.length > 0 && (
-            <ul style={{ color: "#b45309" }}>{result.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
+            <ul className="mt-2 text-sm text-amber-600 dark:text-amber-400">
+              {result.warnings.map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
           )}
         </div>
       )}

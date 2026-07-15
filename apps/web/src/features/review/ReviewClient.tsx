@@ -2,6 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { Badge } from "@arnfar/ui/components/badge";
+import { Button } from "@arnfar/ui/components/button";
+import { Select } from "@arnfar/ui/components/select";
+import { Textarea } from "@arnfar/ui/components/textarea";
+import { cn } from "@arnfar/ui/lib/utils";
+
 import {
   bulkAccept,
   fetchChunks,
@@ -12,18 +18,18 @@ import {
   type ReviewState,
 } from "./api";
 
-const REVIEW_COLOR: Record<ReviewState, string> = {
-  pending: "#9ca3af",
-  accepted: "#16a34a",
-  edited: "#2563eb",
-  rejected: "#dc2626",
+const REVIEW_CLASS: Record<ReviewState, string> = {
+  pending: "text-muted-foreground",
+  accepted: "text-emerald-600 dark:text-emerald-400",
+  edited: "text-blue-600 dark:text-blue-400",
+  rejected: "text-destructive",
 };
 
-const KIND_BADGE: Record<string, string> = {
-  prose: "#334155",
-  table: "#7c3aed",
-  account_row: "#b45309",
-  list: "#0891b2",
+const KIND_VARIANT: Record<string, "default" | "secondary" | "muted" | "outline"> = {
+  prose: "secondary",
+  table: "default",
+  account_row: "outline",
+  list: "muted",
 };
 
 export function ReviewClient() {
@@ -117,106 +123,64 @@ export function ReviewClient() {
   }, {});
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-      <header
-        style={{
-          padding: "0.6rem 1rem",
-          borderBottom: "1px solid #e5e7eb",
-          display: "flex",
-          gap: "1rem",
-          alignItems: "center",
-          flexWrap: "wrap",
-        }}
-      >
-        <strong>Studio · Review</strong>
-        <select
-          value={docId ?? ""}
-          onChange={(e) => setDocId(e.target.value)}
-          style={{ padding: "0.25rem" }}
-        >
+    <div className="flex h-[calc(100vh-3rem)] flex-col">
+      <header className="border-border flex flex-wrap items-center gap-3 border-b px-4 py-2">
+        <strong>Review</strong>
+        <Select value={docId ?? ""} onChange={(e) => setDocId(e.target.value)}>
           {docs.map((d) => (
             <option key={d.id} value={d.id}>
               {d.title} · {d.collection} · {d.chunks} chunks ({d.pending} pending)
             </option>
           ))}
-        </select>
-        <span style={{ fontSize: "0.8rem", color: "#6b7280" }}>
+        </Select>
+        <span className="text-muted-foreground text-xs">
           keys: <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>a</kbd> accept · <kbd>e</kbd> edit ·{" "}
           <kbd>r</kbd> reject
         </span>
         {doc && (
-          <button
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-auto"
             onClick={async () => {
               const res = await bulkAccept(doc.id, { kind: "prose", minTokens: 20 });
               setStatus(`bulk accepted ${res.accepted} prose chunks (>20 tok)`);
               loadChunks(doc.id);
             }}
-            style={{ marginLeft: "auto" }}
           >
             Bulk-accept prose &gt;20 tok
-          </button>
+          </Button>
         )}
       </header>
 
-      <div style={{ padding: "0.3rem 1rem", fontSize: "0.8rem", color: "#374151" }}>
+      <div className="text-muted-foreground flex gap-4 px-4 py-1.5 text-xs">
         {Object.entries(counts).map(([k, n]) => (
-          <span key={k} style={{ marginRight: "1rem", color: REVIEW_COLOR[k as ReviewState] }}>
+          <span key={k} className={REVIEW_CLASS[k as ReviewState]}>
             ● {k}: {n}
           </span>
         ))}
-        <span style={{ color: "#6b7280" }}>{status}</span>
+        <span>{status}</span>
       </div>
 
-      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+      <div className="flex min-h-0 flex-1">
         {/* Chunk list */}
-        <ul
-          style={{
-            width: 340,
-            margin: 0,
-            padding: 0,
-            listStyle: "none",
-            overflowY: "auto",
-            borderRight: "1px solid #e5e7eb",
-          }}
-        >
+        <ul className="border-border w-[340px] overflow-y-auto border-r">
           {chunks.map((c, i) => (
             <li
               key={c.id}
               onClick={() => setCursor(i)}
-              style={{
-                padding: "0.5rem 0.75rem",
-                borderBottom: "1px solid #f1f5f9",
-                background: i === cursor ? "#eff6ff" : "transparent",
-                cursor: "pointer",
-              }}
+              className={cn(
+                "cursor-pointer border-b px-3 py-2",
+                i === cursor ? "bg-accent" : "hover:bg-muted/40",
+              )}
             >
-              <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", fontSize: "0.72rem" }}>
-                <span style={{ color: "#94a3b8" }}>#{c.seq}</span>
-                <span
-                  style={{
-                    background: KIND_BADGE[c.kind] ?? "#334155",
-                    color: "white",
-                    borderRadius: 4,
-                    padding: "0 0.35rem",
-                  }}
-                >
-                  {c.kind}
-                </span>
-                <span style={{ color: "#94a3b8" }}>{c.tokenCount}t</span>
-                <span style={{ marginLeft: "auto", color: REVIEW_COLOR[c.review] }}>
-                  ● {c.review}
-                </span>
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="text-muted-foreground">#{c.seq}</span>
+                <Badge variant={KIND_VARIANT[c.kind] ?? "secondary"}>{c.kind}</Badge>
+                <span className="text-muted-foreground">{c.tokenCount}t</span>
+                <span className={cn("ml-auto", REVIEW_CLASS[c.review])}>● {c.review}</span>
               </div>
-              <div
-                lang="lo"
-                style={{
-                  marginTop: 4,
-                  fontSize: "0.85rem",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
+              <div lang="lo" className="mt-1 truncate text-sm">
                 {c.content.slice(0, 80)}
               </div>
             </li>
@@ -224,77 +188,79 @@ export function ReviewClient() {
         </ul>
 
         {/* Detail panel */}
-        <section style={{ flex: 1, overflowY: "auto", padding: "1rem 1.5rem" }}>
+        <section className="flex-1 overflow-y-auto px-6 py-4">
           {!current ? (
-            <p style={{ color: "#6b7280" }}>No chunks. Ingest a document first.</p>
+            <p className="text-muted-foreground">No chunks. Ingest a document first.</p>
           ) : editing === current.id ? (
-            <div>
-              <p style={{ fontSize: "0.8rem", color: "#6b7280" }}>
+            <div className="grid gap-2">
+              <p className="text-muted-foreground text-sm">
                 Editing #{current.seq} — <kbd>Ctrl/⌘+Enter</kbd> save · <kbd>Esc</kbd> cancel
               </p>
-              <textarea
+              <Textarea
                 lang="lo"
                 autoFocus
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
-                style={{ width: "100%", minHeight: 240, fontSize: "1rem", padding: "0.5rem" }}
+                className="min-h-60 text-base"
               />
             </div>
           ) : (
             <div>
-              <div style={{ fontSize: "0.8rem", color: "#6b7280", marginBottom: 8 }}>
+              <div className="text-muted-foreground mb-2 text-sm">
                 {current.headingPath.length ? current.headingPath.join(" › ") : "(no heading)"}
               </div>
-              <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.75rem" }}>
-                <button onClick={() => applyAction(current, "accept")}>✓ Accept (a)</button>
-                <button
+              <div className="mb-3 flex items-center gap-2">
+                <Button size="sm" onClick={() => applyAction(current, "accept")}>
+                  ✓ Accept (a)
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
                   onClick={() => {
                     setDraft(current.content);
                     setEditing(current.id);
                   }}
                 >
                   ✎ Edit (e)
-                </button>
-                <button onClick={() => applyAction(current, "reject")}>✗ Reject (r)</button>
-                <span style={{ marginLeft: "auto", color: current.embedded ? "#16a34a" : "#9ca3af" }}>
+                </Button>
+                <Button size="sm" variant="destructive" onClick={() => applyAction(current, "reject")}>
+                  ✗ Reject (r)
+                </Button>
+                <span
+                  className={cn(
+                    "ml-auto text-sm",
+                    current.embedded ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground",
+                  )}
+                >
                   {current.embedded ? "embedded" : "not embedded"}
                 </span>
               </div>
 
-              <h4 style={{ margin: "0.5rem 0 0.25rem" }}>content (original)</h4>
-              <pre
-                lang="lo"
-                style={{ whiteSpace: "pre-wrap", fontSize: "1.05rem", margin: 0, fontFamily: "inherit" }}
-              >
+              <h4 className="mt-2 mb-1 text-sm font-medium">content (original)</h4>
+              <pre lang="lo" className="font-sans text-[1.05rem] whitespace-pre-wrap">
                 {current.content}
               </pre>
 
               {current.content !== current.contentNorm && (
                 <>
-                  <h4 style={{ margin: "1rem 0 0.25rem", color: "#b45309" }}>
+                  <h4 className="mt-4 mb-1 text-sm font-medium text-amber-600 dark:text-amber-400">
                     content_norm (normalization changed this)
                   </h4>
-                  <pre
-                    lang="lo"
-                    style={{ whiteSpace: "pre-wrap", fontSize: "0.95rem", margin: 0, fontFamily: "inherit", color: "#6b7280" }}
-                  >
+                  <pre lang="lo" className="text-muted-foreground font-sans text-sm whitespace-pre-wrap">
                     {current.contentNorm}
                   </pre>
                 </>
               )}
 
-              <h4 style={{ margin: "1rem 0 0.25rem" }}>content_seg (tsvector input)</h4>
-              <pre
-                lang="lo"
-                style={{ whiteSpace: "pre-wrap", fontSize: "0.85rem", margin: 0, fontFamily: "inherit", color: "#475569" }}
-              >
+              <h4 className="mt-4 mb-1 text-sm font-medium">content_seg (tsvector input)</h4>
+              <pre lang="lo" className="text-muted-foreground font-sans text-xs whitespace-pre-wrap">
                 {current.contentSeg}
               </pre>
 
               {Object.keys(current.meta).length > 0 && (
                 <>
-                  <h4 style={{ margin: "1rem 0 0.25rem" }}>meta</h4>
-                  <pre style={{ fontSize: "0.8rem", background: "#f8fafc", padding: "0.5rem" }}>
+                  <h4 className="mt-4 mb-1 text-sm font-medium">meta</h4>
+                  <pre className="bg-muted rounded p-2 text-xs">
                     {JSON.stringify(current.meta, null, 2)}
                   </pre>
                 </>

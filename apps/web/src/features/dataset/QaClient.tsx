@@ -2,13 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { Badge } from "@arnfar/ui/components/badge";
+import { Button } from "@arnfar/ui/components/button";
+
 import { assignSplits, fetchQa, verifyQa, type QaPair } from "./api";
 
-const SPLIT_COLOR: Record<string, string> = {
-  train: "#2563eb",
-  dev: "#7c3aed",
-  test: "#b45309",
-  unassigned: "#9ca3af",
+const SPLIT_VARIANT: Record<string, "default" | "secondary" | "muted" | "outline"> = {
+  train: "default",
+  dev: "secondary",
+  test: "outline",
+  unassigned: "muted",
 };
 
 export function QaClient() {
@@ -23,49 +26,60 @@ export function QaClient() {
   const verified = qa.filter((q) => q.verified).length;
 
   return (
-    <main style={{ padding: "1rem 1.5rem" }}>
-      <div style={{ display: "flex", gap: "1rem", alignItems: "center", marginBottom: "1rem" }}>
-        <h2 style={{ margin: 0 }}>QA pairs</h2>
-        <span style={{ color: "#6b7280" }}>{verified}/{qa.length} verified</span>
-        <button
+    <main className="px-6 py-5">
+      <div className="mb-4 flex items-center gap-3">
+        <h2 className="text-lg font-semibold">QA pairs</h2>
+        <span className="text-muted-foreground text-sm">
+          {verified}/{qa.length} verified
+        </span>
+        <Button
+          className="ml-auto"
+          variant="outline"
           onClick={async () => {
             const r = await assignSplits();
             setStatus(`splits: train ${r.train} · dev ${r.dev} · test ${r.test}`);
             load();
           }}
-          style={{ marginLeft: "auto" }}
         >
           Assign splits (by document)
-        </button>
-        <span style={{ color: "#6b7280", fontSize: "0.85rem" }}>{status}</span>
+        </Button>
+        <span className="text-muted-foreground text-sm">{status}</span>
       </div>
 
-      <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+      <ul className="divide-border divide-y rounded-lg border">
         {qa.map((q) => (
-          <li key={q.id} style={{ borderBottom: "1px solid #f1f5f9", padding: "0.6rem 0" }}>
-            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", fontSize: "0.75rem", marginBottom: 4 }}>
-              <span style={{ background: "#334155", color: "white", borderRadius: 4, padding: "0 0.35rem" }}>{q.source}</span>
-              <span style={{ color: SPLIT_COLOR[q.split] }}>{q.split}</span>
-              <span style={{ color: "#94a3b8" }}>cites {q.citationIds.length}</span>
-              <span style={{ color: q.verified ? "#16a34a" : "#9ca3af", marginLeft: "auto" }}>
-                {q.verified ? "● verified" : "○ draft"}
-              </span>
-              {!q.verified && (
-                <button
+          <li key={q.id} className="p-3">
+            <div className="mb-1 flex items-center gap-2 text-xs">
+              <Badge variant="muted">{q.source}</Badge>
+              <Badge variant={SPLIT_VARIANT[q.split] ?? "muted"}>{q.split}</Badge>
+              <span className="text-muted-foreground">cites {q.citationIds.length}</span>
+              {q.verified ? (
+                <Badge variant="secondary" className="ml-auto">
+                  ● verified
+                </Badge>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="ml-auto"
                   onClick={async () => {
                     await verifyQa(q.id);
-                    setStatus(`verified qa`);
+                    setStatus("verified qa");
                     load();
                   }}
                 >
                   Verify
-                </button>
+                </Button>
               )}
             </div>
-            <div lang="lo" style={{ fontWeight: 600 }}>Q: {q.questionLo}</div>
-            <div lang="lo" style={{ color: "#475569" }}>A: {q.answerLo}</div>
+            <div lang="lo" className="font-medium">
+              Q: {q.questionLo}
+            </div>
+            <div lang="lo" className="text-muted-foreground">
+              A: {q.answerLo}
+            </div>
             {q.citationIds.length === 0 && (
-              <div style={{ color: "#dc2626", fontSize: "0.8rem" }}>⚠ no citations — cannot export</div>
+              <div className="text-destructive text-xs">⚠ no citations — cannot export</div>
             )}
           </li>
         ))}

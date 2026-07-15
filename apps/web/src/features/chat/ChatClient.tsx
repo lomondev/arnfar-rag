@@ -1,70 +1,212 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowUp,
+  Check,
+  Copy,
+  Flag,
+  Moon,
+  PanelLeft,
+  Plus,
+  Quote,
+  Square,
+  Sun,
+  Trash2,
+  X,
+} from "lucide-react";
+
+import { Button } from "@arnfar/ui/components/button";
+import { Input } from "@arnfar/ui/components/input";
+import { Select } from "@arnfar/ui/components/select";
+import { cn } from "@arnfar/ui/lib/utils";
+
+import { renderMarkdown } from "./markdown";
+import {
+  groupByRecency,
+  loadConversations,
+  newConversationId,
+  saveConversations,
+  titleFrom,
+  type Conversation,
+  type StoredMessage,
+  type StoredSource,
+} from "./storage";
 
 const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
 
-interface Source {
-  n: number;
-  id: string;
-  content: string;
-  headingPath: string[];
-  kind: string;
-  title: string;
-  authority: string | null;
-  effectiveDate: string | null;
-}
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-  sources?: Source[];
-  question?: string; // for assistant: the question it answered
-  promoted?: boolean;
-  reported?: boolean;
-}
+const COLLECTIONS = ["lao-accounting-law", "coa", "tax", "sop", "lao-style"] as const;
 
+/**
+ * Chrome only. The language toggle never touches message content — Lao answers stay Lao
+ * and are never machine-translated (CLAUDE.md).
+ */
 const UI = {
-  lo: { placeholder: "ຖາມຄຳຖາມບັນຊີ…", send: "ສົ່ງ", stop: "ຢຸດ", promote: "ເພີ່ມເຂົ້າ dataset", report: "ລາຍງານຜິດ", sources: "ແຫຼ່ງອ້າງອີງ" },
-  en: { placeholder: "Ask an accounting question…", send: "Send", stop: "Stop", promote: "Promote to dataset", report: "Report wrong", sources: "Sources" },
-};
+  lo: {
+    placeholder: "ຖາມຄຳຖາມບັນຊີ…",
+    greeting: "ຖາມກ່ຽວກັບ ບັນຊີ, ໝວດບັນຊີ, ພາສີ",
+    subtitle: "ຕອບພ້ອມແຫຼ່ງອ້າງອີງ ຫຼື ບໍ່ຕອບ",
+    newChat: "ສົນທະນາໃໝ່",
+    send: "ສົ່ງ",
+    stop: "ຢຸດ",
+    promote: "ເພີ່ມເຂົ້າ dataset",
+    promoted: "ເພີ່ມແລ້ວ",
+    report: "ລາຍງານຜິດ",
+    reported: "ລາຍງານແລ້ວ",
+    copy: "ສຳເນົາ",
+    sources: "ແຫຼ່ງອ້າງອີງ",
+    empty: "ຍັງບໍ່ມີການສົນທະນາ",
+    hint: "Enter ສົ່ງ · Shift+Enter ຂຶ້ນແຖວໃໝ່",
+  },
+  en: {
+    placeholder: "Ask an accounting question…",
+    greeting: "Ask about accounting, chart of accounts, tax",
+    subtitle: "cited or abstains",
+    newChat: "New chat",
+    send: "Send",
+    stop: "Stop",
+    promote: "Promote to dataset",
+    promoted: "Promoted",
+    report: "Report wrong",
+    reported: "Reported",
+    copy: "Copy",
+    sources: "Sources",
+    empty: "No conversations yet",
+    hint: "Enter to send · Shift+Enter for a new line",
+  },
+} as const;
 
-function renderWithCitations(text: string, onCite: (n: number) => void) {
-  return text.split(/(\[\d+\])/g).map((part, i) => {
-    const m = /^\[(\d+)\]$/.exec(part);
-    if (m) {
-      const n = Number(m[1]);
-      return (
-        <sup
-          key={i}
-          onClick={() => onCite(n)}
-          style={{ cursor: "pointer", color: "#2563eb", fontWeight: 700, padding: "0 2px" }}
-          title="view source"
-        >
-          [{n}]
-        </sup>
-      );
-    }
-    return <span key={i}>{part}</span>;
-  });
+type Lang = keyof typeof UI;
+type Theme = "light" | "dark";
+
+/** One SSE frame from `POST /chat/stream`. */
+interface StreamEvent {
+  readonly type: string;
+  readonly t?: string;
+  readonly error?: string;
+  readonly sources?: readonly StoredSource[];
 }
 
 export function ChatClient() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [conversations, setConversations] = useState<readonly Conversation[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
-  const [lang, setLang] = useState<"lo" | "en">("lo");
-  const [panel, setPanel] = useState<Source | null>(null);
+  const [lang, setLang] = useState<Lang>("lo");
+  const [theme, setTheme] = useState<Theme>("light");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [panel, setPanel] = useState<StoredSource | null>(null);
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [k, setK] = useState(8);
   const [collection, setCollection] = useState("");
+
   const abortRef = useRef<AbortController | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+
   const t = UI[lang];
+  const active = useMemo(
+    () => conversations.find((c) => c.id === activeId) ?? null,
+    [conversations, activeId],
+  );
+  const messages = active?.messages ?? [];
+
+  // localStorage is read after mount, never during render: the server renders an empty
+  // thread list, so seeding useState from storage would hydrate-mismatch on every reload.
+  useEffect(() => {
+    setConversations(loadConversations());
+    const storedLang = localStorage.getItem("arnfar.chat.lang");
+    if (storedLang === "lo" || storedLang === "en") setLang(storedLang);
+    setTheme(document.documentElement.classList.contains("dark") ? "dark" : "light");
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (hydrated) saveConversations(conversations);
+  }, [conversations, hydrated]);
+
+  useEffect(() => {
+    if (hydrated) localStorage.setItem("arnfar.chat.lang", lang);
+  }, [lang, hydrated]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => {
+      const next: Theme = prev === "dark" ? "light" : "dark";
+      document.documentElement.classList.toggle("dark", next === "dark");
+      localStorage.setItem("arnfar.theme", next);
+      return next;
+    });
+  }, []);
+
+  // Follow the stream, but only while the reader is already near the bottom — yanking the
+  // viewport down while they are reading an earlier citation is infuriating.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distanceFromBottom < 160) el.scrollTo({ top: el.scrollHeight });
+  }, [messages]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPanel(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const patchMessage = useCallback(
+    (convId: string, idx: number, patch: (m: StoredMessage) => StoredMessage) => {
+      setConversations((cs) =>
+        cs.map((c) =>
+          c.id !== convId
+            ? c
+            : {
+                ...c,
+                updatedAt: Date.now(),
+                messages: c.messages.map((m, j) => (j === idx ? patch(m) : m)),
+              },
+        ),
+      );
+    },
+    [],
+  );
 
   async function send(question: string) {
-    if (!question.trim() || streaming) return;
+    const q = question.trim();
+    if (!q || streaming) return;
     setInput("");
-    setMessages((m) => [...m, { role: "user", content: question }]);
-    const idx = messages.length + 1;
-    setMessages((m) => [...m, { role: "assistant", content: "", sources: [], question }]);
+    if (composerRef.current) composerRef.current.style.height = "auto";
+
+    const now = Date.now();
+    const convId = active?.id ?? newConversationId();
+    const assistantIdx = (active?.messages.length ?? 0) + 1;
+
+    const userMsg: StoredMessage = { role: "user", content: q };
+    const draft: StoredMessage = { role: "assistant", content: "", sources: [], question: q };
+
+    if (active) {
+      setConversations((cs) =>
+        cs.map((c) =>
+          c.id !== convId ? c : { ...c, updatedAt: now, messages: [...c.messages, userMsg, draft] },
+        ),
+      );
+    } else {
+      setConversations((cs) => [
+        {
+          id: convId,
+          title: titleFrom(q),
+          createdAt: now,
+          updatedAt: now,
+          messages: [userMsg, draft],
+        },
+        ...cs,
+      ]);
+      setActiveId(convId);
+    }
+
     setStreaming(true);
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -73,47 +215,50 @@ export function ChatClient() {
       const res = await fetch(`${BASE}/chat/stream`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          message: question,
-          k,
-          ...(collection ? { collections: [collection] } : {}),
-        }),
+        // Single-turn by design: the API takes one message and grounds each answer in a
+        // fresh retrieval. Earlier turns are displayed, not resent.
+        body: JSON.stringify({ message: q, k, ...(collection ? { collections: [collection] } : {}) }),
         signal: ctrl.signal,
       });
-      const reader = res.body!.getReader();
+      if (!res.ok || !res.body) throw new Error(`rag-api responded ${res.status}`);
+
+      const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = "";
-      while (true) {
+
+      for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
         buf += dec.decode(value, { stream: true });
+
         let sep: number;
         while ((sep = buf.indexOf("\n\n")) >= 0) {
           const frame = buf.slice(0, sep);
           buf = buf.slice(sep + 2);
           const line = frame.split("\n").find((l) => l.startsWith("data:"));
           if (!line) continue;
-          const ev = JSON.parse(line.slice(5).trim());
-          // Pure update (no mutation): React StrictMode invokes updaters twice, so
-          // mutating the message object would double every token.
-          setMessages((m) =>
-            m.map((msg, j) => {
-              if (j !== idx) return msg;
-              if (ev.type === "citations") return { ...msg, sources: ev.sources };
-              if (ev.type === "token") return { ...msg, content: msg.content + ev.t };
-              if (ev.type === "error") return { ...msg, content: `${msg.content}\n[error: ${ev.error}]` };
-              return msg;
-            }),
-          );
+
+          const ev = JSON.parse(line.slice(5).trim()) as StreamEvent;
+          // Pure updates only: React StrictMode invokes updaters twice, so mutating the
+          // message object would double every token.
+          if (ev.type === "citations") {
+            patchMessage(convId, assistantIdx, (m) => ({ ...m, sources: ev.sources ?? [] }));
+          } else if (ev.type === "token") {
+            patchMessage(convId, assistantIdx, (m) => ({ ...m, content: m.content + (ev.t ?? "") }));
+          } else if (ev.type === "error") {
+            patchMessage(convId, assistantIdx, (m) => ({
+              ...m,
+              content: `${m.content}\n\n_[error: ${ev.error ?? "unknown"}]_`,
+            }));
+          }
         }
       }
     } catch (e) {
       if ((e as Error).name !== "AbortError") {
-        setMessages((m) => {
-          const copy = [...m];
-          if (copy[idx]) copy[idx]!.content += `\n[error: ${(e as Error).message}]`;
-          return copy;
-        });
+        patchMessage(convId, assistantIdx, (m) => ({
+          ...m,
+          content: `${m.content}\n\n_[error: ${(e as Error).message}]_`,
+        }));
       }
     } finally {
       setStreaming(false);
@@ -121,92 +266,406 @@ export function ChatClient() {
     }
   }
 
-  async function promote(msg: Message, i: number) {
+  async function promote(msg: StoredMessage, idx: number) {
     const ids = (msg.sources ?? []).map((s) => s.id);
-    if (!ids.length) return;
+    if (!ids.length || !active) return;
     await fetch(`${BASE}/chat/promote`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ question: msg.question ?? "", answer: msg.content, citationIds: ids }),
     });
-    setMessages((m) => m.map((x, j) => (j === i ? { ...x, promoted: true } : x)));
+    patchMessage(active.id, idx, (m) => ({ ...m, promoted: true }));
   }
-  async function report(msg: Message, i: number) {
+
+  async function report(msg: StoredMessage, idx: number) {
     const ids = (msg.sources ?? []).map((s) => s.id);
-    if (!ids.length) return;
+    if (!ids.length || !active) return;
     await fetch(`${BASE}/chat/report-wrong`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ chunkIds: ids }),
     });
-    setMessages((m) => m.map((x, j) => (j === i ? { ...x, reported: true } : x)));
+    patchMessage(active.id, idx, (m) => ({ ...m, reported: true }));
   }
 
-  return (
-    <div style={{ display: "flex", height: "100vh" }}>
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        <header style={{ display: "flex", gap: "0.75rem", alignItems: "center", padding: "0.6rem 1rem", borderBottom: "1px solid #e5e7eb" }}>
-          <strong>Arnfar Chat</strong>
-          <span style={{ fontSize: "0.75rem", color: "#6b7280" }}>SEA-LION · cited or abstains</span>
-          <div style={{ marginLeft: "auto", display: "flex", gap: "0.5rem", alignItems: "center", fontSize: "0.8rem" }}>
-            <label>k <input type="number" min={1} max={20} value={k} onChange={(e) => setK(Number(e.target.value))} style={{ width: 44 }} /></label>
-            <select value={collection} onChange={(e) => setCollection(e.target.value)}>
-              <option value="">all collections</option>
-              {["lao-accounting-law", "coa", "tax", "sop", "lao-style"].map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <button onClick={() => setLang(lang === "lo" ? "en" : "lo")}>{lang === "lo" ? "EN" : "ລາວ"}</button>
-          </div>
-        </header>
+  async function copy(text: string, idx: number) {
+    await navigator.clipboard.writeText(text);
+    setCopiedIdx(idx);
+    window.setTimeout(() => setCopiedIdx((cur) => (cur === idx ? null : cur)), 1500);
+  }
 
-        <div style={{ flex: 1, overflowY: "auto", padding: "1rem" }}>
-          {messages.length === 0 && <p style={{ color: "#9ca3af" }} lang="lo">ຖາມກ່ຽວກັບ ບັນຊີ, ໝວດບັນຊີ, ພາສີ…</p>}
-          {messages.map((msg, i) => (
-            <div key={i} style={{ marginBottom: "1rem", maxWidth: 760 }}>
-              <div style={{ fontSize: "0.7rem", color: "#94a3b8" }}>{msg.role}</div>
-              <div lang="lo" style={{ fontSize: "1.05rem", whiteSpace: "pre-wrap", background: msg.role === "user" ? "#eff6ff" : "transparent", padding: msg.role === "user" ? "0.4rem 0.6rem" : 0, borderRadius: 6 }}>
-                {msg.role === "assistant" ? renderWithCitations(msg.content || "…", (n) => setPanel(msg.sources?.[n - 1] ?? null)) : msg.content}
-              </div>
-              {msg.role === "assistant" && msg.content && !streaming && (
-                <div style={{ display: "flex", gap: "0.5rem", marginTop: 4, fontSize: "0.8rem" }}>
-                  <button disabled={msg.promoted} onClick={() => promote(msg, i)}>{msg.promoted ? "✓ promoted" : t.promote}</button>
-                  <button disabled={msg.reported} onClick={() => report(msg, i)}>{msg.reported ? "✓ reported" : t.report}</button>
-                  {msg.sources && msg.sources.length > 0 && (
-                    <span style={{ color: "#94a3b8" }}>{t.sources}: {msg.sources.length}</span>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
+  function startNewChat() {
+    abortRef.current?.abort();
+    setActiveId(null);
+    setInput("");
+    setPanel(null);
+    composerRef.current?.focus();
+  }
+
+  function deleteConversation(id: string) {
+    setConversations((cs) => cs.filter((c) => c.id !== id));
+    if (activeId === id) setActiveId(null);
+  }
+
+  const groups = useMemo(() => groupByRecency(conversations, Date.now()), [conversations]);
+
+  return (
+    <div className="bg-background text-foreground flex h-screen overflow-hidden">
+      {/* Dismiss layer — only reachable on narrow viewports, where the sidebar overlays. */}
+      {sidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close sidebar"
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-30 bg-black/30 md:hidden"
+        />
+      )}
+
+      <aside
+        className={cn(
+          "border-sidebar-border bg-sidebar text-sidebar-foreground z-40 w-[264px] shrink-0 flex-col border-e",
+          "max-md:fixed max-md:inset-y-0 max-md:start-0",
+          sidebarOpen ? "flex" : "hidden",
+        )}
+      >
+        <div className="flex items-center gap-2 px-3 py-3">
+          <span className="bg-sidebar-primary text-sidebar-primary-foreground flex size-7 items-center justify-center rounded-md text-sm font-bold">
+            ✦
+          </span>
+          <span className="text-sm font-semibold">Arnfar</span>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={() => setSidebarOpen(false)}
+            title="Collapse sidebar"
+            className="text-muted-foreground ms-auto"
+          >
+            <PanelLeft />
+          </Button>
         </div>
 
-        <form
-          onSubmit={(e) => { e.preventDefault(); send(input); }}
-          style={{ display: "flex", gap: "0.5rem", padding: "0.75rem 1rem", borderTop: "1px solid #e5e7eb" }}
-        >
-          <input lang="lo" value={input} onChange={(e) => setInput(e.target.value)} placeholder={t.placeholder} style={{ flex: 1, padding: "0.5rem", fontSize: "1rem" }} />
-          {streaming ? (
-            <button type="button" onClick={() => abortRef.current?.abort()}>{t.stop}</button>
-          ) : (
-            <button type="submit">{t.send}</button>
+        <div className="px-3 pb-2">
+          <Button
+            variant="outline"
+            size="lg"
+            onClick={startNewChat}
+            className="w-full justify-start gap-2"
+          >
+            <Plus className="text-primary" />
+            {t.newChat}
+          </Button>
+        </div>
+
+        <nav className="flex-1 overflow-y-auto px-2 pb-2">
+          {groups.length === 0 && (
+            <p className="text-muted-foreground px-3 py-6 text-center text-xs">{t.empty}</p>
           )}
-        </form>
-      </div>
+          {groups.map((group) => (
+            <div key={group.label} className="mb-3">
+              <p className="text-muted-foreground px-3 py-1.5 text-[0.7rem] font-medium">
+                {group.label}
+              </p>
+              {group.items.map((c) => (
+                <div
+                  key={c.id}
+                  className={cn(
+                    "group flex items-center gap-1 rounded-lg px-2 transition-colors",
+                    c.id === activeId ? "bg-sidebar-accent" : "hover:bg-sidebar-accent/60",
+                  )}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveId(c.id);
+                      setPanel(null);
+                      if (window.innerWidth < 768) setSidebarOpen(false);
+                    }}
+                    lang="lo"
+                    title={c.title}
+                    className="min-w-0 flex-1 truncate py-2 text-start text-sm"
+                  >
+                    {c.title}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteConversation(c.id)}
+                    title="Delete"
+                    className="text-muted-foreground hover:text-destructive rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ))}
+        </nav>
+
+        <div className="border-sidebar-border flex items-center gap-1 border-t px-3 py-2.5">
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            onClick={toggleTheme}
+            title="Toggle theme"
+            className="text-muted-foreground"
+          >
+            {theme === "dark" ? <Sun /> : <Moon />}
+          </Button>
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() => setLang(lang === "lo" ? "en" : "lo")}
+            className="text-muted-foreground"
+          >
+            {lang === "lo" ? "EN" : "ລາວ"}
+          </Button>
+        </div>
+      </aside>
+
+      <main className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-12 shrink-0 items-center gap-2 px-3">
+          {!sidebarOpen && (
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={() => setSidebarOpen(true)}
+              title="Open sidebar"
+              className="text-muted-foreground"
+            >
+              <PanelLeft />
+            </Button>
+          )}
+          <span className="text-sm font-medium">Arnfar Chat</span>
+          <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-[0.7rem]">
+            SEA-LION · {t.subtitle}
+          </span>
+        </header>
+
+        <div ref={scrollRef} className="flex-1 overflow-y-auto">
+          <div className="mx-auto w-full max-w-3xl px-6 py-6">
+            {messages.length === 0 ? (
+              <div className="flex min-h-[50vh] flex-col items-center justify-center text-center">
+                <span className="bg-primary text-primary-foreground mb-4 flex size-11 items-center justify-center rounded-xl text-lg">
+                  ✦
+                </span>
+                <p lang="lo" className="text-xl font-semibold">
+                  {t.greeting}
+                </p>
+                <p className="text-muted-foreground mt-1.5 text-sm">SEA-LION · {t.subtitle}</p>
+              </div>
+            ) : (
+              messages.map((msg, i) =>
+                msg.role === "user" ? (
+                  <div key={i} className="mb-6 flex justify-end">
+                    <div
+                      lang="lo"
+                      className="bg-chat-user text-chat-user-foreground max-w-[85%] rounded-2xl rounded-ee-md px-4 py-2.5 text-[1.02rem] leading-[1.7] whitespace-pre-wrap"
+                    >
+                      {msg.content}
+                    </div>
+                  </div>
+                ) : (
+                  <div key={i} className="mb-8">
+                    <div className="text-[1.02rem]">
+                      {msg.content ? (
+                        renderMarkdown(msg.content, (n) => setPanel(msg.sources?.[n - 1] ?? null))
+                      ) : (
+                        <span className="inline-flex gap-1 py-2">
+                          <Dot delay="0ms" />
+                          <Dot delay="150ms" />
+                          <Dot delay="300ms" />
+                        </span>
+                      )}
+                      {streaming && i === messages.length - 1 && msg.content && (
+                        <span className="bg-foreground ms-0.5 inline-block h-[1.05em] w-[2px] translate-y-[0.15em] animate-pulse" />
+                      )}
+                    </div>
+
+                    {msg.content && !(streaming && i === messages.length - 1) && (
+                      <div className="mt-2.5 flex flex-wrap items-center gap-1">
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          onClick={() => copy(msg.content, i)}
+                          className="text-muted-foreground"
+                        >
+                          {copiedIdx === i ? <Check /> : <Copy />}
+                          {t.copy}
+                        </Button>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          disabled={msg.promoted === true || (msg.sources ?? []).length === 0}
+                          onClick={() => promote(msg, i)}
+                          className={cn(
+                            "text-muted-foreground",
+                            msg.promoted && "text-primary disabled:opacity-100",
+                          )}
+                        >
+                          {msg.promoted ? <Check /> : <Quote />}
+                          {msg.promoted ? t.promoted : t.promote}
+                        </Button>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          disabled={msg.reported === true || (msg.sources ?? []).length === 0}
+                          onClick={() => report(msg, i)}
+                          className="text-muted-foreground"
+                        >
+                          {msg.reported ? <Check /> : <Flag />}
+                          {msg.reported ? t.reported : t.report}
+                        </Button>
+                        {(msg.sources ?? []).length > 0 && (
+                          <span className="text-muted-foreground ms-1 text-xs">
+                            {t.sources}: {(msg.sources ?? []).length}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ),
+              )
+            )}
+          </div>
+        </div>
+
+        <div className="shrink-0 px-6 pb-4">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void send(input);
+            }}
+            className="border-border bg-card focus-within:border-ring/50 mx-auto w-full max-w-3xl rounded-2xl border shadow-sm transition-shadow focus-within:shadow-md"
+          >
+            <textarea
+              ref={composerRef}
+              lang="lo"
+              rows={1}
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value);
+                // Grow with the text, then cap and scroll — a composer that swallows the
+                // thread is worse than one that scrolls.
+                const el = e.currentTarget;
+                el.style.height = "auto";
+                el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+              }}
+              onKeyDown={(e) => {
+                // isComposing guards the IME: a Lao/keyboard candidate commit also fires
+                // Enter, and sending mid-composition would truncate the word.
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  void send(input);
+                }
+              }}
+              placeholder={t.placeholder}
+              className="placeholder:text-muted-foreground max-h-[200px] w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[1.02rem] leading-[1.6] outline-none"
+            />
+
+            <div className="text-muted-foreground flex items-center gap-2 px-3 pb-2.5 text-xs">
+              <label className="flex items-center gap-1" title="Chunks retrieved per question">
+                k
+                <Input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={k}
+                  onChange={(e) => setK(Math.min(20, Math.max(1, Number(e.target.value) || 1)))}
+                  className="h-7 w-14"
+                />
+              </label>
+              <Select
+                value={collection}
+                onChange={(e) => setCollection(e.target.value)}
+                className="h-7"
+              >
+                <option value="">all collections</option>
+                {COLLECTIONS.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </Select>
+
+              <span className="ms-auto hidden sm:inline">{t.hint}</span>
+
+              {streaming ? (
+                <Button
+                  type="button"
+                  size="icon"
+                  onClick={() => abortRef.current?.abort()}
+                  title={t.stop}
+                  className="bg-foreground text-background"
+                >
+                  <Square className="fill-current" />
+                </Button>
+              ) : (
+                <Button type="submit" size="icon" disabled={!input.trim()} title={t.send}>
+                  <ArrowUp />
+                </Button>
+              )}
+            </div>
+          </form>
+        </div>
+      </main>
 
       {panel && (
-        <aside style={{ width: 360, borderLeft: "1px solid #e5e7eb", padding: "1rem", overflowY: "auto" }}>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <strong>[{panel.n}] {panel.kind}</strong>
-            <button onClick={() => setPanel(null)}>✕</button>
+        <aside className="border-border bg-card flex w-[380px] shrink-0 flex-col border-s max-lg:fixed max-lg:inset-y-0 max-lg:end-0 max-lg:z-40 max-lg:shadow-xl">
+          <div className="border-border flex items-center gap-2 border-b px-4 py-3">
+            <span className="bg-citation/15 text-citation flex size-5 items-center justify-center rounded text-xs font-semibold">
+              {panel.n}
+            </span>
+            <span className="text-sm font-medium">{panel.kind}</span>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={() => setPanel(null)}
+              className="text-muted-foreground ms-auto"
+            >
+              <X />
+            </Button>
           </div>
-          <div style={{ fontSize: "0.8rem", color: "#6b7280", margin: "0.5rem 0" }}>
-            {panel.title}
-            {panel.headingPath.length > 0 && <div lang="lo">{panel.headingPath.join(" › ")}</div>}
-            {panel.authority && <div>authority: {panel.authority}</div>}
-            {panel.effectiveDate && <div>effective: {panel.effectiveDate}</div>}
+
+          <div className="flex-1 overflow-y-auto px-4 py-3">
+            <p className="text-sm font-medium">{panel.title}</p>
+            {panel.headingPath.length > 0 && (
+              <p lang="lo" className="text-muted-foreground mt-1 text-xs">
+                {panel.headingPath.join(" › ")}
+              </p>
+            )}
+            <dl className="text-muted-foreground mt-2 space-y-0.5 text-xs">
+              {panel.authority && (
+                <div className="flex gap-1.5">
+                  <dt>authority:</dt>
+                  <dd className="text-foreground">{panel.authority}</dd>
+                </div>
+              )}
+              {panel.effectiveDate && (
+                <div className="flex gap-1.5">
+                  <dt>effective:</dt>
+                  <dd className="text-foreground">{panel.effectiveDate}</dd>
+                </div>
+              )}
+            </dl>
+            {/* The pristine `content` column, verbatim — never reflowed or normalised.
+              * This pane is what a reviewer checks the answer against. */}
+            <p
+              lang="lo"
+              className="border-border mt-3 border-t pt-3 text-[0.95rem] leading-[1.8] whitespace-pre-wrap"
+            >
+              {panel.content}
+            </p>
           </div>
-          <pre lang="lo" style={{ whiteSpace: "pre-wrap", fontFamily: "inherit", fontSize: "0.95rem" }}>{panel.content}</pre>
         </aside>
       )}
     </div>
+  );
+}
+
+function Dot({ delay }: { delay: string }) {
+  return (
+    <span
+      className="bg-muted-foreground size-1.5 animate-bounce rounded-full"
+      style={{ animationDelay: delay }}
+    />
   );
 }
