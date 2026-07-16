@@ -1,6 +1,8 @@
 import { cors } from "@elysiajs/cors";
 import { Elysia } from "elysia";
 
+import { accountsRoutes } from "./features/accounts/routes.ts";
+import { agentRoutes } from "./features/agent/routes.ts";
 import { chatRoutes } from "./features/chat/routes.ts";
 import { evalRoutes } from "./features/eval/routes.ts";
 import { exportRoutes } from "./features/export/routes.ts";
@@ -11,6 +13,7 @@ import { startWorker } from "./features/ingest/worker.ts";
 import { qaRoutes } from "./features/qa/routes.ts";
 import { reviewRoutes } from "./features/review/routes.ts";
 import { searchRoutes } from "./features/search/routes.ts";
+import { toolsRoutes } from "./features/tools/routes.ts";
 import { env } from "./lib/env.ts";
 
 /**
@@ -38,6 +41,9 @@ export const app = new Elysia()
   .use(searchRoutes)
   .use(qaRoutes)
   .use(glossaryRoutes)
+  .use(accountsRoutes)
+  .use(toolsRoutes)
+  .use(agentRoutes)
   .use(exportRoutes)
   .use(evalRoutes)
   .use(chatRoutes)
