@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../../lib/db.ts";
 import { newId } from "../../lib/ids.ts";
 import { generate } from "../../lib/ollama.ts";
+import { segment } from "../../lib/sidecars.ts";
 import { mineCandidates } from "./mining.ts";
 
 /** LLM drafts the English gloss; a human verifies. verified=false until then. */
@@ -60,6 +61,55 @@ export async function listTerms(tenant: TenantContext, verified?: boolean) {
     .from(schema.laoTerm)
     .where(and(...conds))
     .orderBy(schema.laoTerm.termLo);
+}
+
+export interface TermCreate {
+  termLo: string;
+  termEn: string;
+  definitionLo?: string;
+  definitionEn?: string;
+  variantsLo?: string[];
+  forbiddenLo?: string[];
+  domain?: string;
+}
+
+/** Manual term entry. termLoSeg comes from the lao-nlp sidecar so lexical lookup
+ *  matches mined terms. Returns null on duplicate (hf, company, termLo, domain). */
+export async function createTerm(tenant: TenantContext, input: TermCreate) {
+  const seg = await segment(input.termLo);
+  const res = await db()
+    .insert(schema.laoTerm)
+    .values({
+      id: newId(),
+      hfId: tenant.hfId,
+      companyId: tenant.companyId,
+      termLo: input.termLo,
+      termLoSeg: seg.seg_text,
+      termEn: input.termEn,
+      definitionLo: input.definitionLo ?? null,
+      definitionEn: input.definitionEn ?? null,
+      variantsLo: input.variantsLo ?? [],
+      forbiddenLo: input.forbiddenLo ?? [],
+      domain: input.domain ?? "accounting",
+      verified: false,
+    })
+    .onConflictDoNothing()
+    .returning({ id: schema.laoTerm.id });
+  return res[0] ?? null;
+}
+
+export async function deleteTerm(tenant: TenantContext, id: string) {
+  const res = await db()
+    .delete(schema.laoTerm)
+    .where(
+      and(
+        eq(schema.laoTerm.id, id),
+        eq(schema.laoTerm.hfId, tenant.hfId),
+        eq(schema.laoTerm.companyId, tenant.companyId),
+      ),
+    )
+    .returning({ id: schema.laoTerm.id });
+  return res[0] ?? null;
 }
 
 export interface TermUpdate {

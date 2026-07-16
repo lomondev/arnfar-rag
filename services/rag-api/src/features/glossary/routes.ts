@@ -1,13 +1,51 @@
 import { Elysia, t } from "elysia";
 
 import { devTenant } from "../../lib/tenant.ts";
-import { listTerms, mineAndDraft, updateTerm, verifyTerm } from "./service.ts";
+import {
+  createTerm,
+  deleteTerm,
+  listTerms,
+  mineAndDraft,
+  updateTerm,
+  verifyTerm,
+} from "./service.ts";
 
 export const glossaryRoutes = new Elysia({ prefix: "/glossary" })
   .get("/", async ({ query }) => {
     const verified =
       query.verified === "true" ? true : query.verified === "false" ? false : undefined;
     return listTerms(devTenant(), verified);
+  })
+  .post(
+    "/",
+    async ({ body, set }) => {
+      const res = await createTerm(devTenant(), body);
+      if (!res) {
+        set.status = 409;
+        return { error: "term already exists for this domain" };
+      }
+      set.status = 201;
+      return { id: res.id };
+    },
+    {
+      body: t.Object({
+        termLo: t.String({ minLength: 1 }),
+        termEn: t.String({ minLength: 1 }),
+        definitionLo: t.Optional(t.String()),
+        definitionEn: t.Optional(t.String()),
+        variantsLo: t.Optional(t.Array(t.String())),
+        forbiddenLo: t.Optional(t.Array(t.String())),
+        domain: t.Optional(t.String({ minLength: 1 })),
+      }),
+    },
+  )
+  .delete("/:id", async ({ params, set }) => {
+    const res = await deleteTerm(devTenant(), params.id);
+    if (!res) {
+      set.status = 404;
+      return { error: "term not found" };
+    }
+    return { id: res.id, deleted: true };
   })
   .post(
     "/mine",
