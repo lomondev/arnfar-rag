@@ -24,14 +24,19 @@ import { cn } from "@arnfar/ui/lib/utils";
 import { renderMarkdown } from "./markdown";
 import {
   groupByRecency,
-  loadConversations,
-  newConversationId,
-  saveConversations,
   titleFrom,
   type Conversation,
   type StoredMessage,
   type StoredSource,
 } from "./storage";
+import {
+  deleteConversation as deleteConversationApi,
+  getConversation,
+  listConversations,
+  promoteToDataset,
+  reportWrong,
+  type ConversationSummary,
+} from "./chatApi";
 
 const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
 
@@ -85,10 +90,14 @@ interface StreamEvent {
   readonly t?: string;
   readonly error?: string;
   readonly sources?: readonly StoredSource[];
+  readonly conversationId?: string;
 }
 
 export function ChatClient() {
-  const [conversations, setConversations] = useState<readonly Conversation[]>([]);
+  // Sidebar list — summaries only (no messages) so the list stays cheap.
+  const [summaries, setSummaries] = useState<readonly ConversationSummary[]>([]);
+  // Full message thread for the active conversation (loaded on open).
+  const [activeThread, setActiveThread] = useState<Conversation | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
 
@@ -107,25 +116,35 @@ export function ChatClient() {
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   const t = UI[lang];
-  const active = useMemo(
-    () => conversations.find((c) => c.id === activeId) ?? null,
-    [conversations, activeId],
-  );
-  const messages = active?.messages ?? [];
+  const messages = activeThread?.messages ?? [];
 
-  // localStorage is read after mount, never during render: the server renders an empty
-  // thread list, so seeding useState from storage would hydrate-mismatch on every reload.
+  // Load the conversation list from the server after mount (avoid hydration mismatch).
   useEffect(() => {
-    setConversations(loadConversations());
+    void listConversations().then(setSummaries).catch(() => setSummaries([]));
     const storedLang = localStorage.getItem("arnfar.chat.lang");
     if (storedLang === "lo" || storedLang === "en") setLang(storedLang);
     setTheme(document.documentElement.classList.contains("dark") ? "dark" : "light");
     setHydrated(true);
   }, []);
 
+  // When the active conversation changes, load its full message thread.
   useEffect(() => {
-    if (hydrated) saveConversations(conversations);
-  }, [conversations, hydrated]);
+    if (!activeId) {
+      setActiveThread(null);
+      return;
+    }
+    let cancelled = false;
+    void getConversation(activeId)
+      .then((conv) => {
+        if (!cancelled) setActiveThread(conv);
+      })
+      .catch(() => {
+        if (!cancelled) setActiveThread(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId]);
 
   useEffect(() => {
     if (hydrated) localStorage.setItem("arnfar.chat.lang", lang);
@@ -157,18 +176,13 @@ export function ChatClient() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  /** Patch a message in the active thread by index. Pure updaters only (StrictMode). */
   const patchMessage = useCallback(
-    (convId: string, idx: number, patch: (m: StoredMessage) => StoredMessage) => {
-      setConversations((cs) =>
-        cs.map((c) =>
-          c.id !== convId
-            ? c
-            : {
-                ...c,
-                updatedAt: Date.now(),
-                messages: c.messages.map((m, j) => (j === idx ? patch(m) : m)),
-              },
-        ),
+    (idx: number, patch: (m: StoredMessage) => StoredMessage) => {
+      setActiveThread((cur) =>
+        cur
+          ? { ...cur, updatedAt: Date.now(), messages: cur.messages.map((m, j) => (j === idx ? patch(m) : m)) }
+          : cur,
       );
     },
     [],
@@ -180,31 +194,26 @@ export function ChatClient() {
     setInput("");
     if (composerRef.current) composerRef.current.style.height = "auto";
 
-    const now = Date.now();
-    const convId = active?.id ?? newConversationId();
-    const assistantIdx = (active?.messages.length ?? 0) + 1;
+    const existingConvId = activeId;
+    const assistantIdx = (activeThread?.messages.length ?? 0) + 1;
 
+    // Optimistic: append the user turn + an empty assistant draft so the UI reacts instantly.
     const userMsg: StoredMessage = { role: "user", content: q };
     const draft: StoredMessage = { role: "assistant", content: "", sources: [], question: q };
-
-    if (active) {
-      setConversations((cs) =>
-        cs.map((c) =>
-          c.id !== convId ? c : { ...c, updatedAt: now, messages: [...c.messages, userMsg, draft] },
-        ),
+    if (existingConvId && activeThread) {
+      setActiveThread((cur) =>
+        cur ? { ...cur, updatedAt: Date.now(), messages: [...cur.messages, userMsg, draft] } : cur,
       );
     } else {
-      setConversations((cs) => [
-        {
-          id: convId,
-          title: titleFrom(q),
-          createdAt: now,
-          updatedAt: now,
-          messages: [userMsg, draft],
-        },
-        ...cs,
-      ]);
-      setActiveId(convId);
+      // No active conversation yet — create a transient local one. The server will assign
+      // the real id (emitted in the `created` frame) and we reconcile on first event.
+      setActiveThread({
+        id: "pending",
+        title: titleFrom(q),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        messages: [userMsg, draft],
+      });
     }
 
     setStreaming(true);
@@ -215,9 +224,14 @@ export function ChatClient() {
       const res = await fetch(`${BASE}/chat/stream`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        // Single-turn by design: the API takes one message and grounds each answer in a
-        // fresh retrieval. Earlier turns are displayed, not resent.
-        body: JSON.stringify({ message: q, k, ...(collection ? { collections: [collection] } : {}) }),
+        // Multi-turn: send the conversationId so the server loads history for context.
+        // If absent the server creates a new conversation and returns its id via `created`.
+        body: JSON.stringify({
+          message: q,
+          k,
+          ...(existingConvId ? { conversationId: existingConvId } : {}),
+          ...(collection ? { collections: [collection] } : {}),
+        }),
         signal: ctrl.signal,
       });
       if (!res.ok || !res.body) throw new Error(`rag-api responded ${res.status}`);
@@ -225,6 +239,7 @@ export function ChatClient() {
       const reader = res.body.getReader();
       const dec = new TextDecoder();
       let buf = "";
+      let serverConvId: string | null = null;
 
       for (;;) {
         const { done, value } = await reader.read();
@@ -239,23 +254,30 @@ export function ChatClient() {
           if (!line) continue;
 
           const ev = JSON.parse(line.slice(5).trim()) as StreamEvent;
-          // Pure updates only: React StrictMode invokes updaters twice, so mutating the
-          // message object would double every token.
-          if (ev.type === "citations") {
-            patchMessage(convId, assistantIdx, (m) => ({ ...m, sources: ev.sources ?? [] }));
+          if (ev.type === "created" && ev.conversationId) {
+            // Reconcile: the server assigned the real conversation id. Wire it into state
+            // and refresh the sidebar so the new thread appears.
+            serverConvId = ev.conversationId;
+            setActiveThread((cur) => (cur && cur.id === "pending" ? { ...cur, id: serverConvId! } : cur));
+            setActiveId(serverConvId);
+            void listConversations().then(setSummaries).catch(() => {});
+          } else if (ev.type === "citations") {
+            patchMessage(assistantIdx, (m) => ({ ...m, sources: ev.sources ?? [] }));
           } else if (ev.type === "token") {
-            patchMessage(convId, assistantIdx, (m) => ({ ...m, content: m.content + (ev.t ?? "") }));
+            patchMessage(assistantIdx, (m) => ({ ...m, content: m.content + (ev.t ?? "") }));
           } else if (ev.type === "error") {
-            patchMessage(convId, assistantIdx, (m) => ({
+            patchMessage(assistantIdx, (m) => ({
               ...m,
               content: `${m.content}\n\n_[error: ${ev.error ?? "unknown"}]_`,
             }));
           }
         }
       }
+      // After the stream finishes, refresh the sidebar ordering (updatedAt bumped server-side).
+      if (serverConvId) void listConversations().then(setSummaries).catch(() => {});
     } catch (e) {
       if ((e as Error).name !== "AbortError") {
-        patchMessage(convId, assistantIdx, (m) => ({
+        patchMessage(assistantIdx, (m) => ({
           ...m,
           content: `${m.content}\n\n_[error: ${(e as Error).message}]_`,
         }));
@@ -268,24 +290,16 @@ export function ChatClient() {
 
   async function promote(msg: StoredMessage, idx: number) {
     const ids = (msg.sources ?? []).map((s) => s.id);
-    if (!ids.length || !active) return;
-    await fetch(`${BASE}/chat/promote`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ question: msg.question ?? "", answer: msg.content, citationIds: ids }),
-    });
-    patchMessage(active.id, idx, (m) => ({ ...m, promoted: true }));
+    if (!ids.length) return;
+    await promoteToDataset({ question: msg.question ?? "", answer: msg.content, citationIds: ids });
+    patchMessage(idx, (m) => ({ ...m, promoted: true }));
   }
 
   async function report(msg: StoredMessage, idx: number) {
     const ids = (msg.sources ?? []).map((s) => s.id);
-    if (!ids.length || !active) return;
-    await fetch(`${BASE}/chat/report-wrong`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ chunkIds: ids }),
-    });
-    patchMessage(active.id, idx, (m) => ({ ...m, reported: true }));
+    if (!ids.length) return;
+    await reportWrong(ids);
+    patchMessage(idx, (m) => ({ ...m, reported: true }));
   }
 
   async function copy(text: string, idx: number) {
@@ -302,12 +316,25 @@ export function ChatClient() {
     composerRef.current?.focus();
   }
 
-  function deleteConversation(id: string) {
-    setConversations((cs) => cs.filter((c) => c.id !== id));
+  async function handleDeleteConversation(id: string) {
+    await deleteConversationApi(id).catch(() => {});
+    setSummaries((cs) => cs.filter((c) => c.id !== id));
     if (activeId === id) setActiveId(null);
   }
 
-  const groups = useMemo(() => groupByRecency(conversations, Date.now()), [conversations]);
+  // Build the grouped list from server summaries (epochs for the recency buckets).
+  const groupList = useMemo<Conversation[]>(
+    () =>
+      summaries.map((s) => ({
+        id: s.id,
+        title: s.title,
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+        messages: [],
+      })),
+    [summaries],
+  );
+  const groups = useMemo(() => groupByRecency(groupList, Date.now()), [groupList]);
 
   return (
     <div className="bg-background text-foreground flex h-screen overflow-hidden">
@@ -388,7 +415,7 @@ export function ChatClient() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => deleteConversation(c.id)}
+                    onClick={() => void handleDeleteConversation(c.id)}
                     title="Delete"
                     className="text-muted-foreground hover:text-destructive rounded p-1 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
                   >

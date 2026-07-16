@@ -11,3 +11,4 @@ export * from "./qa.ts";
 export * from "./evaluation.ts";
 export * from "./outbox.ts";
 export * from "./job.ts";
+export * from "./conversation.ts";

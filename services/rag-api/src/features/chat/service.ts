@@ -5,10 +5,19 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../../lib/db.ts";
 import { generateStream } from "../../lib/ollama.ts";
 import { search } from "../search/service.ts";
-import { buildContext, buildSystemPrompt, toSources, type CitationSource } from "./prompt.ts";
+import {
+  CONTEXT_WINDOW,
+  createConversation,
+  insertMessage,
+  recentMessages,
+  titleFrom,
+  trimForHistory,
+} from "./conversation.ts";
+import { buildSystemPrompt, buildPrompt, toSources, type CitationSource } from "./prompt.ts";
 
 export interface ChatParams {
   message: string;
+  conversationId?: string;
   collections?: string[];
   k?: number;
   model?: string;
@@ -17,9 +26,10 @@ export interface ChatParams {
 }
 
 export type ChatEvent =
+  | { type: "created"; conversationId: string; userMessageId: string }
   | { type: "citations"; sources: CitationSource[]; glossaryMatches: unknown[] }
   | { type: "token"; t: string }
-  | { type: "done" }
+  | { type: "done"; conversationId: string; assistantMessageId: string }
   | { type: "error"; error: string };
 
 async function glossaryForPrompt(tenant: TenantContext) {
@@ -42,10 +52,43 @@ async function glossaryForPrompt(tenant: TenantContext) {
   return { terms, forbidden };
 }
 
-/** RAG chat: retrieve (hybrid + glossary expansion) → build the persona prompt →
- *  stream tokens. Emits a citations frame first so the UI can render [n] chips. */
+/**
+ * RAG chat with multi-turn memory. Flow:
+ *   1. Resolve/create the conversation, persist the user turn.
+ *   2. Load recent history (capped) for context injection.
+ *   3. Retrieve on the *current* question (hybrid + glossary expansion).
+ *   4. Stream tokens, accumulating the full answer.
+ *   5. Persist the assistant turn (sources + meta) on completion.
+ *
+ * Emits a `created` frame first (server ids for the UI), then `citations`, then
+ * `token` events, then `done`. If no conversationId is given a new conversation is
+ * created from the first question — so single-turn callers keep working.
+ */
 export async function* chatStream(p: ChatParams): AsyncGenerator<ChatEvent> {
   try {
+    // ── 1. Resolve / create conversation + persist the user turn ────────────────
+    let conversationId = p.conversationId;
+    if (!conversationId) {
+      const conv = await createConversation(p.tenant, { title: titleFrom(p.message) });
+      conversationId = conv.id;
+    }
+    const userMsg = await insertMessage(p.tenant, {
+      conversationId,
+      role: "user",
+      content: p.message,
+    });
+    yield { type: "created", conversationId, userMessageId: userMsg.id };
+
+    // ── 2. Load history for multi-turn context (excludes the turn just inserted) ──
+    const historyRows = await recentMessages(p.tenant, conversationId, CONTEXT_WINDOW);
+    // The last row is the user turn we just inserted — drop it from the history we
+    // feed the model; the question is asked separately at the end of the prompt.
+    const history = historyRows.slice(0, -1).map((m) => ({
+      role: m.role,
+      content: trimForHistory(m.role, m.content),
+    }));
+
+    // ── 3. Retrieve on the current question ────────────────────────────────────
     const result = await search({
       query: p.message,
       collections: p.collections ?? [],
@@ -55,18 +98,34 @@ export async function* chatStream(p: ChatParams): AsyncGenerator<ChatEvent> {
     const sources = toSources(result.hits);
     yield { type: "citations", sources, glossaryMatches: result.glossaryMatches };
 
+    // ── 4. Build the prompt (history → context → question) and stream ───────────
     const { terms, forbidden } = await glossaryForPrompt(p.tenant);
     const system = buildSystemPrompt(terms, forbidden);
-    const context = buildContext(sources);
-    const prompt = `Context:\n${context}\n\nQuestion: ${p.message}\n\nAnswer (cite [n] or state it is not in the documents):`;
+    const prompt = buildPrompt(p.message, sources, history);
 
     const streamOpts = p.model
       ? { system, model: p.model, ...(p.signal ? { signal: p.signal } : {}) }
       : { system, ...(p.signal ? { signal: p.signal } : {}) };
+
+    let fullAnswer = "";
     for await (const tok of generateStream(prompt, streamOpts)) {
+      fullAnswer += tok;
       yield { type: "token", t: tok };
     }
-    yield { type: "done" };
+
+    // ── 5. Persist the assistant turn ───────────────────────────────────────────
+    const assistantMsg = await insertMessage(p.tenant, {
+      conversationId,
+      role: "assistant",
+      content: fullAnswer,
+      sources,
+      meta: {
+        ...(p.model ? { model: p.model } : {}),
+        ...(p.k ? { k: p.k } : {}),
+        ...(p.collections ? { collections: p.collections } : {}),
+      },
+    });
+    yield { type: "done", conversationId, assistantMessageId: assistantMsg.id };
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") return;
     yield { type: "error", error: err instanceof Error ? err.message : String(err) };

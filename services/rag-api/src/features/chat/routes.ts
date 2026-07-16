@@ -4,10 +4,79 @@ import { Elysia, t } from "elysia";
 
 import { db } from "../../lib/db.ts";
 import { devTenant } from "../../lib/tenant.ts";
+import {
+  createConversation,
+  deleteConversation,
+  getConversation,
+  listConversations,
+  renameConversation,
+} from "./conversation.ts";
 import { createQa } from "../qa/service.ts";
 import { chatStream } from "./service.ts";
 
 export const chatRoutes = new Elysia({ prefix: "/chat" })
+  // ── Conversation CRUD ──────────────────────────────────────────────────────
+  .post(
+    "/conversations",
+    async ({ body }) => {
+      const tenant = devTenant();
+      return createConversation(tenant, {
+        ...(body.title ? { title: body.title } : {}),
+        ...(body.lang ? { lang: body.lang } : {}),
+        ...(body.collection ? { collection: body.collection } : {}),
+      });
+    },
+    {
+      body: t.Object({
+        title: t.Optional(t.String({ minLength: 1, maxLength: 200 })),
+        lang: t.Optional(t.Union([t.Literal("lo"), t.Literal("en"), t.Literal("th"), t.Literal("mixed")])),
+        collection: t.Optional(t.String()),
+      }),
+    },
+  )
+  .get("/conversations", async () => listConversations(devTenant()))
+  .get(
+    "/conversations/:id",
+    async ({ params, set }) => {
+      const conv = await getConversation(devTenant(), params.id);
+      if (!conv) {
+        set.status = 404;
+        return { error: "not found" };
+      }
+      return conv;
+    },
+  )
+  .patch(
+    "/conversations/:id",
+    async ({ params, body, set }) => {
+      const updated = await renameConversation(devTenant(), params.id, {
+        ...(body.title !== undefined ? { title: body.title } : {}),
+        ...(body.lang !== undefined ? { lang: body.lang } : {}),
+        ...(body.collection !== undefined ? { collection: body.collection } : {}),
+      });
+      if (!updated) {
+        set.status = 404;
+        return { error: "not found" };
+      }
+      return updated;
+    },
+    {
+      body: t.Object({
+        title: t.Optional(t.String({ minLength: 1, maxLength: 200 })),
+        lang: t.Optional(t.Union([t.Literal("lo"), t.Literal("en"), t.Literal("th"), t.Literal("mixed")])),
+        collection: t.Optional(t.Union([t.String(), t.Null()])),
+      }),
+    },
+  )
+  .delete(
+    "/conversations/:id",
+    async ({ params }) => {
+      const ok = await deleteConversation(devTenant(), params.id);
+      return { deleted: ok };
+    },
+  )
+
+  // ── Multi-turn streaming chat ──────────────────────────────────────────────
   .post(
     "/stream",
     ({ body, request }) => {
@@ -16,6 +85,7 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
         message: body.message,
         tenant,
         signal: request.signal, // aborting the HTTP request cancels Ollama
+        ...(body.conversationId ? { conversationId: body.conversationId } : {}),
         ...(body.collections ? { collections: body.collections } : {}),
         ...(body.k ? { k: body.k } : {}),
         ...(body.model ? { model: body.model } : {}),
@@ -47,6 +117,7 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
     {
       body: t.Object({
         message: t.String({ minLength: 1 }),
+        conversationId: t.Optional(t.String()),
         collections: t.Optional(t.Array(t.String())),
         k: t.Optional(t.Number({ minimum: 1, maximum: 20 })),
         model: t.Optional(t.String()),

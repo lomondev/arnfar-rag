@@ -88,6 +88,64 @@ export async function createQa(tenant: TenantContext, input: HumanQaInput) {
   return { id };
 }
 
+export interface QaUpdate {
+  questionLo?: string;
+  answerLo?: string;
+  questionEn?: string | null;
+  answerEn?: string | null;
+  citationIds?: string[];
+  tags?: string[];
+  difficulty?: number;
+}
+
+/** Editing content invalidates prior human verification — exports carry
+ *  verified rows only, so an edited-after-verify pair must be re-verified. */
+export async function updateQa(tenant: TenantContext, id: string, patch: QaUpdate) {
+  const set: Record<string, unknown> = {};
+  if (patch.questionLo !== undefined) set.questionLo = patch.questionLo;
+  if (patch.answerLo !== undefined) set.answerLo = patch.answerLo;
+  if (patch.questionEn !== undefined) set.questionEn = patch.questionEn;
+  if (patch.answerEn !== undefined) set.answerEn = patch.answerEn;
+  if (patch.tags !== undefined) set.tags = patch.tags;
+  if (patch.difficulty !== undefined) set.difficulty = patch.difficulty;
+  if (patch.citationIds !== undefined) {
+    const chunks = await validateCitations(tenant, patch.citationIds);
+    set.citationIds = patch.citationIds;
+    set.collection = chunks[0]!.collection;
+  }
+  if (Object.keys(set).length === 0) return null;
+  set.verified = false;
+  set.verifiedBy = null;
+  set.verifiedAt = null;
+  set.updatedAt = new Date();
+  const res = await db()
+    .update(schema.laoQaPair)
+    .set(set)
+    .where(
+      and(
+        eq(schema.laoQaPair.id, id),
+        eq(schema.laoQaPair.hfId, tenant.hfId),
+        eq(schema.laoQaPair.companyId, tenant.companyId),
+      ),
+    )
+    .returning({ id: schema.laoQaPair.id });
+  return res[0] ?? null;
+}
+
+export async function deleteQa(tenant: TenantContext, id: string) {
+  const res = await db()
+    .delete(schema.laoQaPair)
+    .where(
+      and(
+        eq(schema.laoQaPair.id, id),
+        eq(schema.laoQaPair.hfId, tenant.hfId),
+        eq(schema.laoQaPair.companyId, tenant.companyId),
+      ),
+    )
+    .returning({ id: schema.laoQaPair.id });
+  return res[0] ?? null;
+}
+
 export async function verifyQa(tenant: TenantContext, id: string, verifiedBy: string) {
   const res = await db()
     .update(schema.laoQaPair)

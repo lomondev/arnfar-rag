@@ -70,3 +70,31 @@ export function buildContext(sources: CitationSource[]): string {
     })
     .join("\n\n");
 }
+
+export interface HistoryTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+/** Format prior turns so the LLM sees the conversation. Prior-assistant answers are
+ *  trimmed (their old [n] citations are now stale text — only the *current* retrieval
+ *  set's [n] are live citations, so we never let old markers confuse the model). */
+export function buildHistory(turns: HistoryTurn[]): string {
+  if (!turns.length) return "";
+  return turns
+    .map((t) => `${t.role === "user" ? "User" : "Assistant"}: ${t.content}`)
+    .join("\n\n");
+}
+
+/** Build the full prompt: optional conversation history → retrieved context → question.
+ *  When there is no history this collapses to the original single-turn prompt. */
+export function buildPrompt(question: string, sources: CitationSource[], history: HistoryTurn[]): string {
+  const context = buildContext(sources);
+  const hist = buildHistory(history);
+  const parts: string[] = [];
+  if (hist) parts.push(`[Conversation so far]\n${hist}`);
+  parts.push(`[Retrieved context for the current question]\n${context}`);
+  parts.push(`Question: ${question}`);
+  parts.push("Answer (cite [n] or state it is not in the documents):");
+  return parts.join("\n\n");
+}
