@@ -1,0 +1,22 @@
+code,name_lo,name_en,parent_code,class,normal_balance,statement
+10,ທຶນຂອງເຈົ້າຂອງ,Owner's equity,,equity,credit,BS
+101,ທຶນຈົດທະບຽນ,Registered capital,10,equity,credit,BS
+11,ກຳໄລສະສົມ,Retained earnings,,equity,credit,BS
+21,ຊັບສິນຄົງທີ່ມີຕົວຕົນ,Tangible fixed assets,,asset,debit,BS
+213,ອາຄານ ແລະ ສິ່ງປຸກສ້າງ,Buildings,21,asset,debit,BS
+215,ເຄື່ອງຈັກ ແລະ ອຸປະກອນ,Machinery and equipment,21,asset,debit,BS
+218,ພາຫະນະຂົນສົ່ງ,Vehicles,21,asset,debit,BS
+28,ຄ່າຫຼູ້ຍຫ້ຽນສະສົມ,Accumulated depreciation,,asset,credit,BS
+31,ວັດຖຸດິບ,Raw materials,,asset,debit,BS
+35,ສິນຄ້າສຳເລັດຮູບ,Finished goods,,asset,debit,BS
+401,ເຈົ້າໜີ້ການຄ້າ,Trade payables,,liability,credit,BS
+411,ລູກໜີ້ການຄ້າ,Trade receivables,,asset,debit,BS
+421,ໜີ້ຕ້ອງຈ່າຍ ພະນັກງານ,Payroll payable,,liability,credit,BS
+4331,ອາກອນມູນຄ່າເພີ່ມ ຕ້ອງຈ່າຍ,VAT payable,,liability,credit,BS
+511,ເງິນຝາກທະນາຄານ,Bank deposits,,asset,debit,BS
+531,ເງິນສົດໃນມື,Cash on hand,,asset,debit,BS
+601,ຕົ້ນທຶນ ວັດຖຸດິບ ທີ່ໃຊ້ໄປ,Cost of raw materials used,,expense,debit,PL
+641,ຄ່າແຮງງານ ພະນັກງານ,Staff costs,,expense,debit,PL
+681,ຄ່າຫຼູ້ຍຫ້ຽນ ປະຈຳງວດ,Depreciation expense,,expense,debit,PL
+701,ລາຍຮັບ ຈາກ ການຂາຍ,Sales revenue,,revenue,credit,PL
+706,ລາຍຮັບ ຈາກ ການບໍລິການ,Service revenue,,revenue,credit,PL
