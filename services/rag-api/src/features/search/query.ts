@@ -37,9 +37,15 @@ export interface HybridSearchResult {
   explain?: string;
 }
 
-function rrfQuery(p: HybridSearchParams) {
+/** RRF candidate-pool floor. Each arm fuses at least this many candidates so the top
+ *  result is stable regardless of the requested page size `k`. Below this, a small `k`
+ *  starves the fusion (k=1 → 4 candidates/arm) and a spurious dense neighbour can outrank
+ *  the real hit. HNSW already computes ef_search (100) candidates, so raising the pool to
+ *  this floor just stops discarding rows it already found — near-zero extra cost. */
+const RRF_POOL_MIN = 100;
+
+function rrfQuery(p: HybridSearchParams, cand: number) {
   const vec = `[${p.queryEmbedding.join(",")}]`;
-  const cand = p.k * 4;
   const collList = sql.join(
     p.collections.map((c) => sql`${c}`),
     sql`, `,
@@ -80,13 +86,19 @@ function rrfQuery(p: HybridSearchParams) {
 }
 
 export async function hybridSearch(p: HybridSearchParams): Promise<HybridSearchResult> {
+  // Fuse each arm's top-`cand` candidates, never fewer than the floor — so the #1 result
+  // does not depend on how many rows the caller happened to ask for. Scales past the floor
+  // for very large k.
+  const cand = Math.max(p.k * 4, RRF_POOL_MIN);
   return db().transaction(async (tx) => {
     // pgvector 0.8 iterative scan — keeps ANN recall under a selective tenant filter.
     await tx.execute(sql`SET LOCAL hnsw.iterative_scan = 'relaxed_order'`);
     await tx.execute(sql`SET LOCAL hnsw.max_scan_tuples = 20000`);
-    await tx.execute(sql`SET LOCAL hnsw.ef_search = 100`);
+    // ef_search must be >= the dense candidate pool, or HNSW can't fill it. SET takes no
+    // bind params, so inline the computed integer (safe — derived from validated k).
+    await tx.execute(sql`SET LOCAL hnsw.ef_search = ${sql.raw(String(Math.max(100, cand)))}`);
 
-    const q = rrfQuery(p);
+    const q = rrfQuery(p, cand);
     let explain: string | undefined;
     if (p.explain) {
       const plan = await tx.execute(
