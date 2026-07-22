@@ -122,6 +122,9 @@ export async function promoteToDataset(input: {
   answer: string;
   citationIds: readonly string[];
   tags?: readonly string[];
+  /** Teach mode: the curator is the reviewer — mark the QA pair verified immediately. */
+  verify?: boolean;
+  reviewer?: string;
 }): Promise<void> {
   await postJson("/chat/promote", input);
 }
