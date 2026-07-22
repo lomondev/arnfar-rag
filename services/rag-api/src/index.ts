@@ -4,6 +4,7 @@ import { Elysia } from "elysia";
 import { accountsRoutes } from "./features/accounts/routes.ts";
 import { agentRoutes } from "./features/agent/routes.ts";
 import { chatRoutes } from "./features/chat/routes.ts";
+import { dashboardRoutes } from "./features/dashboard/routes.ts";
 import { evalRoutes } from "./features/eval/routes.ts";
 import { exportRoutes } from "./features/export/routes.ts";
 import { glossaryRoutes } from "./features/glossary/routes.ts";
@@ -47,6 +48,7 @@ export const app = new Elysia()
   .use(exportRoutes)
   .use(evalRoutes)
   .use(chatRoutes)
+  .use(dashboardRoutes)
   .use(laoRoutes)
   // idleTimeout 255s (Bun max): SSE chat streams idle between the citations frame and
   // the LLM's first token (prompt eval) — the 10s default would kill the stream.
