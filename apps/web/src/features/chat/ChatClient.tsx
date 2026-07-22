@@ -3,13 +3,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUp,
+  BookOpen,
   Check,
   Copy,
   Flag,
+  Loader2,
   Moon,
   PanelLeft,
+  PenLine,
   Plus,
   Quote,
+  Search,
   Square,
   Sun,
   Trash2,
@@ -62,6 +66,9 @@ const UI = {
     sources: "ແຫຼ່ງອ້າງອີງ",
     empty: "ຍັງບໍ່ມີການສົນທະນາ",
     hint: "Enter ສົ່ງ · Shift+Enter ຂຶ້ນແຖວໃໝ່",
+    phaseSearch: "ກຳລັງຄົ້ນຫາແຫຼ່ງອ້າງອີງ",
+    phaseRead: "ອ່ານແຫຼ່ງອ້າງອີງ",
+    phaseWrite: "ກຳລັງຮ່າງຄຳຕອບ",
   },
   en: {
     placeholder: "Ask an accounting question…",
@@ -78,11 +85,18 @@ const UI = {
     sources: "Sources",
     empty: "No conversations yet",
     hint: "Enter to send · Shift+Enter for a new line",
+    phaseSearch: "Searching sources",
+    phaseRead: "Reading sources",
+    phaseWrite: "Composing answer",
   },
 } as const;
 
 type Lang = keyof typeof UI;
 type Theme = "light" | "dark";
+
+/** The visible stages of a streamed answer, in order. Driven by the SSE event sequence. */
+type StreamPhase = "searching" | "reading" | "writing";
+const PHASE_ORDER: readonly StreamPhase[] = ["searching", "reading", "writing"];
 
 /** One SSE frame from `POST /chat/stream`. */
 interface StreamEvent {
@@ -104,6 +118,9 @@ export function ChatClient() {
 
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  // Progress for the in-flight answer: which stage, and how many sources were retrieved.
+  const [phase, setPhase] = useState<StreamPhase | null>(null);
+  const [phaseSources, setPhaseSources] = useState(0);
   const [lang, setLang] = useState<Lang>("lo");
   const [theme, setTheme] = useState<Theme>("light");
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -218,6 +235,8 @@ export function ChatClient() {
     }
 
     setStreaming(true);
+    setPhase("searching");
+    setPhaseSources(0);
     const ctrl = new AbortController();
     abortRef.current = ctrl;
 
@@ -264,7 +283,10 @@ export function ChatClient() {
             void listConversations().then(setSummaries).catch(() => {});
           } else if (ev.type === "citations") {
             patchMessage(assistantIdx, (m) => ({ ...m, sources: ev.sources ?? [] }));
+            setPhaseSources(ev.sources?.length ?? 0);
+            setPhase("reading");
           } else if (ev.type === "token") {
+            setPhase((cur) => (cur === "writing" ? cur : "writing"));
             patchMessage(assistantIdx, (m) => ({ ...m, content: m.content + (ev.t ?? "") }));
           } else if (ev.type === "error") {
             patchMessage(assistantIdx, (m) => ({
@@ -285,6 +307,7 @@ export function ChatClient() {
       }
     } finally {
       setStreaming(false);
+      setPhase(null);
       abortRef.current = null;
     }
   }
@@ -496,6 +519,8 @@ export function ChatClient() {
                     <div className="text-[1.02rem]">
                       {msg.content ? (
                         renderMarkdown(msg.content, (n) => setPanel(msg.sources?.[n - 1] ?? null))
+                      ) : streaming && i === messages.length - 1 ? (
+                        <StreamProgress phase={phase ?? "searching"} sources={phaseSources} labels={t} />
                       ) : (
                         <span className="inline-flex gap-1 py-2">
                           <Dot delay="0ms" />
@@ -695,5 +720,72 @@ function Dot({ delay }: { delay: string }) {
       className="bg-muted-foreground size-1.5 animate-bounce rounded-full"
       style={{ animationDelay: delay }}
     />
+  );
+}
+
+/**
+ * A modern, phased progress indicator for a streaming answer. Mirrors the pipeline the
+ * server actually runs — retrieve → read → generate — so the reader sees *what* is taking
+ * time, not just *that* it is. Completed steps check off; the active step spins and shimmers.
+ */
+function StreamProgress({
+  phase,
+  sources,
+  labels,
+}: {
+  phase: StreamPhase;
+  sources: number;
+  labels: (typeof UI)[Lang];
+}) {
+  const active = PHASE_ORDER.indexOf(phase);
+  const text: Record<StreamPhase, string> = {
+    searching: labels.phaseSearch,
+    reading: sources > 0 ? `${labels.phaseRead} · ${sources}` : labels.phaseRead,
+    writing: labels.phaseWrite,
+  };
+  const Icon: Record<StreamPhase, typeof Search> = {
+    searching: Search,
+    reading: BookOpen,
+    writing: PenLine,
+  };
+  return (
+    <div className="flex flex-col gap-2 py-1.5">
+      {PHASE_ORDER.map((p, idx) => {
+        const state = idx < active ? "done" : idx === active ? "active" : "pending";
+        const StepIcon = Icon[p];
+        return (
+          <div
+            key={p}
+            className={cn(
+              "flex items-center gap-2.5 text-sm transition-colors duration-300",
+              state === "active"
+                ? "text-foreground"
+                : state === "done"
+                  ? "text-muted-foreground"
+                  : "text-muted-foreground/40",
+            )}
+          >
+            <span className="flex size-5 shrink-0 items-center justify-center">
+              {state === "active" ? (
+                <Loader2 className="text-primary size-4 animate-spin" />
+              ) : state === "done" ? (
+                <Check className="text-primary size-4" />
+              ) : (
+                <StepIcon className="size-4" />
+              )}
+            </span>
+            <span
+              lang="lo"
+              className={cn(
+                state === "active" &&
+                  "from-foreground via-muted-foreground to-foreground animate-shimmer bg-gradient-to-r bg-[length:200%_100%] bg-clip-text text-transparent",
+              )}
+            >
+              {text[p]}
+            </span>
+          </div>
+        );
+      })}
+    </div>
   );
 }

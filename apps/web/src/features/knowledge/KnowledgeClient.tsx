@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { BookOpen, Check, Landmark, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { BookOpen, Check, ChevronDown, Eye, Landmark, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
 
 import { Badge } from "@arnfar/ui/components/badge";
 import { Button } from "@arnfar/ui/components/button";
@@ -19,7 +19,10 @@ import { Textarea } from "@arnfar/ui/components/textarea";
 import { cn } from "@arnfar/ui/lib/utils";
 
 import { AccountsClient } from "@/features/dataset/AccountsClient";
+import { renderMarkdown } from "@/features/chat/markdown";
 import { useCollections } from "@/features/studio/useCollections";
+
+const noCite = () => {};
 
 const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
 
@@ -64,6 +67,10 @@ export function KnowledgeClient() {
   const [deleteKind, setDeleteKind] = useState<Kind | null>(null);
   const [citedQa, setCitedQa] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  /* search/filter + expanded markdown view + dialog preview */
+  const [query, setQuery] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [previewOn, setPreviewOn] = useState(false);
 
   const loadKinds = useCallback(async () => {
     try {
@@ -203,6 +210,16 @@ export function KnowledgeClient() {
 
   const activeKind = kinds.find((k) => k.key === selected) ?? null;
 
+  // Client-side filter — entries arrive with full bodies, so title+body substring match
+  // is instant. Lao has no case; lowercase only affects the English glosses.
+  const visibleEntries = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return entries;
+    return entries.filter(
+      (e) => e.title.toLowerCase().includes(q) || e.body.toLowerCase().includes(q),
+    );
+  }, [entries, query]);
+
   return (
     <div className="mx-auto flex w-full max-w-6xl gap-5 px-6 py-6">
       {/* ── kinds rail ─────────────────────────────────────────────── */}
@@ -307,6 +324,24 @@ export function KnowledgeClient() {
               </Button>
             </div>
 
+            {entries.length > 0 && (
+              <div className="relative mt-3">
+                <Search className="text-muted-foreground absolute start-3 top-1/2 size-4 -translate-y-1/2" />
+                <Input
+                  lang="lo"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="ຄົ້ນຫາ ຫົວຂໍ້ ຫຼື ເນື້ອໃນ…"
+                  className="ps-9"
+                />
+                {query && (
+                  <span className="text-muted-foreground absolute end-3 top-1/2 -translate-y-1/2 text-xs tabular-nums">
+                    {visibleEntries.length}/{entries.length}
+                  </span>
+                )}
+              </div>
+            )}
+
             {loadingEntries ? (
               <p className="text-muted-foreground mt-6 flex items-center gap-2 text-sm">
                 <Loader2 className="size-4 animate-spin" /> loading…
@@ -318,12 +353,29 @@ export function KnowledgeClient() {
                   ທຸກລາຍການທີ່ເພີ່ມ ຈະຖືກ ທຳຄວາມສະອາດ → ຕັດຕອນ → embed ໃຫ້ AI ຄົ້ນຫາ ແລະ ອ້າງອີງໄດ້ທັນທີ
                 </p>
               </div>
+            ) : visibleEntries.length === 0 ? (
+              <p lang="lo" className="text-muted-foreground mt-6 text-center text-sm">
+                ບໍ່ພົບ "{query}" ໃນປະເພດນີ້
+              </p>
             ) : (
               <div className="mt-3 space-y-2">
-                {entries.map((e) => (
+                {visibleEntries.map((e) => (
                   <div key={e.id} className="border-border bg-card group rounded-xl border px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <p lang="lo" className="min-w-0 flex-1 truncate text-sm font-medium">{e.title}</p>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedId((cur) => (cur === e.id ? null : e.id))}
+                        className="flex min-w-0 flex-1 items-center gap-1.5 text-start"
+                        title={expandedId === e.id ? "Collapse" : "Expand"}
+                      >
+                        <ChevronDown
+                          className={cn(
+                            "text-muted-foreground size-4 shrink-0 transition-transform",
+                            expandedId !== e.id && "-rotate-90",
+                          )}
+                        />
+                        <span lang="lo" className="min-w-0 flex-1 truncate text-sm font-medium">{e.title}</span>
+                      </button>
                       {e.pending > 0 ? (
                         <span className="flex items-center gap-1 text-xs text-amber-600">
                           <Loader2 className="size-3 animate-spin" /> embedding
@@ -353,9 +405,13 @@ export function KnowledgeClient() {
                         <Trash2 className="size-3.5" />
                       </Button>
                     </div>
-                    <p lang="lo" className="text-muted-foreground mt-1 line-clamp-2 text-[0.85rem] leading-[1.7] whitespace-pre-wrap">
-                      {e.body}
-                    </p>
+                    {expandedId === e.id ? (
+                      <div lang="lo" className="mt-2 text-[0.92rem]">{renderMarkdown(e.body, noCite)}</div>
+                    ) : (
+                      <p lang="lo" className="text-muted-foreground mt-1 line-clamp-2 text-[0.85rem] leading-[1.7] whitespace-pre-wrap">
+                        {e.body}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -422,7 +478,7 @@ export function KnowledgeClient() {
       </Dialog>
 
       {/* ── entry dialog (create/edit) ── */}
-      <Dialog open={entryDialog !== null} onOpenChange={(o) => { if (!o) setEntryDialog(null); }}>
+      <Dialog open={entryDialog !== null} onOpenChange={(o) => { if (!o) { setEntryDialog(null); setPreviewOn(false); } }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle lang="lo">{entryDialog?.id ? "ແກ້ໄຂຄວາມຮູ້" : "ເພີ່ມຄວາມຮູ້"}</DialogTitle>
@@ -437,14 +493,35 @@ export function KnowledgeClient() {
               <Input lang="lo" value={entryDialog?.title ?? ""} onChange={(e) => setEntryDialog((d) => (d ? { ...d, title: e.target.value } : d))} className="mt-1" />
             </div>
             <div>
-              <Label className="text-xs">ເນື້ອໃນ *</Label>
-              <Textarea
-                lang="lo"
-                rows={10}
-                value={entryDialog?.body ?? ""}
-                onChange={(e) => setEntryDialog((d) => (d ? { ...d, body: e.target.value } : d))}
-                className="mt-1 text-[1rem] leading-[1.8]"
-              />
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">ເນື້ອໃນ * <span className="text-muted-foreground font-normal">Markdown: ## ຫົວຂໍ້ · **ເນັ້ນ** · | ຕາຕະລາງ | · - ລາຍການ</span></Label>
+                <div className="flex gap-1">
+                  <Button size="xs" variant={previewOn ? "ghost" : "secondary"} onClick={() => setPreviewOn(false)} className="gap-1">
+                    <Pencil className="size-3" /> ຂຽນ
+                  </Button>
+                  <Button size="xs" variant={previewOn ? "secondary" : "ghost"} onClick={() => setPreviewOn(true)} className="gap-1">
+                    <Eye className="size-3" /> ເບິ່ງກ່ອນ
+                  </Button>
+                </div>
+              </div>
+              {previewOn ? (
+                <div lang="lo" className="border-border mt-1 max-h-[50vh] min-h-40 overflow-y-auto rounded-md border px-3 py-2 text-[0.95rem]">
+                  {entryDialog?.body.trim() ? (
+                    renderMarkdown(entryDialog.body, noCite)
+                  ) : (
+                    <p className="text-muted-foreground text-sm">ບໍ່ມີເນື້ອໃນ</p>
+                  )}
+                </div>
+              ) : (
+                <Textarea
+                  lang="lo"
+                  rows={10}
+                  value={entryDialog?.body ?? ""}
+                  onChange={(e) => setEntryDialog((d) => (d ? { ...d, body: e.target.value } : d))}
+                  className="mt-1 text-[1rem] leading-[1.8]"
+                  placeholder={"## ຫົວຂໍ້ຍ່ອຍ\nເນື້ອໃນ…\n\n| ຖັນ | ຖັນ |\n| --- | --- |\n| ຄ່າ | ຄ່າ |"}
+                />
+              )}
             </div>
           </div>
           <DialogFooter>

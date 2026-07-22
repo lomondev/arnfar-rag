@@ -180,8 +180,59 @@ async function kindByKey(tenant: TenantContext, key: string) {
   return k ?? null;
 }
 
-/** body → cleaned+segmented prose block(s) → chunk rows. One entry may produce several
- *  chunks (chunkBlocks splits >400-token prose with overlap; Lao sentences intact). */
+/** Parse a Markdown body into typed blocks, mirroring what docx-extractor emits:
+ *  `#`-headings drive the heading path and chunk boundaries, contiguous `|` lines are
+ *  one atomic table block (never split — same rule as ingested tables), blank-line
+ *  paragraphs are prose the chunker may pack/split. Unrecognised syntax stays literal. */
+function parseMarkdownBlocks(
+  title: string,
+  body: string,
+): { kind: "heading" | "prose" | "table"; level?: number; text: string; headingPath: string[] }[] {
+  const out: { kind: "heading" | "prose" | "table"; level?: number; text: string; headingPath: string[] }[] = [];
+  const stack: string[] = []; // heading texts by level (index 0 = level 1)
+  const lines = body.split("\n");
+  let i = 0;
+  const path = () => [title, ...stack.filter(Boolean)];
+
+  while (i < lines.length) {
+    const line = lines[i] ?? "";
+    if (line.trim() === "") {
+      i++;
+      continue;
+    }
+    const h = /^(#{1,4})\s+(.*)$/.exec(line);
+    if (h) {
+      const level = (h[1] ?? "#").length;
+      stack.length = level - 1;
+      stack[level - 1] = (h[2] ?? "").trim();
+      out.push({ kind: "heading", level, text: (h[2] ?? "").trim(), headingPath: path() });
+      i++;
+      continue;
+    }
+    if (line.trim().startsWith("|")) {
+      const rows: string[] = [];
+      while (i < lines.length && (lines[i] ?? "").trim().startsWith("|")) {
+        rows.push(lines[i] ?? "");
+        i++;
+      }
+      out.push({ kind: "table", text: rows.join("\n"), headingPath: path() });
+      continue;
+    }
+    const para: string[] = [];
+    while (i < lines.length) {
+      const l = lines[i] ?? "";
+      if (l.trim() === "" || /^(#{1,4})\s/.test(l) || l.trim().startsWith("|")) break;
+      para.push(l);
+      i++;
+    }
+    out.push({ kind: "prose", text: para.join("\n"), headingPath: path() });
+  }
+  return out;
+}
+
+/** body → markdown blocks → cleaned+segmented SegBlocks → chunk rows. Headings become
+ *  chunk boundaries with real heading paths; tables are atomic; long prose is packed or
+ *  split by chunkBlocks (≤400 tokens, Lao sentences intact). */
 async function buildChunkRows(
   tenant: TenantContext,
   documentId: string,
@@ -189,17 +240,34 @@ async function buildChunkRows(
   title: string,
   body: string,
 ) {
-  const seg = await segment(fixLaoDefects(body));
-  const block: SegBlock = {
-    kind: "prose",
-    text: body,
-    seg: seg.seg_text,
-    tokens: seg.token_count,
-    lang: seg.lang,
-    headingPath: [title],
-    meta: {},
-  };
-  const chunks = chunkBlocks([block]);
+  const parsed = parseMarkdownBlocks(title, body);
+  const segBlocks: SegBlock[] = [];
+  for (const b of parsed) {
+    if (b.kind === "heading") {
+      segBlocks.push({
+        kind: "heading",
+        level: b.level ?? 1,
+        text: b.text,
+        seg: "",
+        tokens: 0,
+        lang: "lo",
+        headingPath: b.headingPath,
+      });
+      continue;
+    }
+    if (!b.text.trim()) continue;
+    const seg = await segment(fixLaoDefects(b.text));
+    segBlocks.push({
+      kind: b.kind,
+      text: b.text,
+      seg: seg.seg_text,
+      tokens: seg.token_count,
+      lang: seg.lang,
+      headingPath: b.headingPath,
+      meta: {},
+    });
+  }
+  const chunks = chunkBlocks(segBlocks);
   const rows = [];
   for (const c of chunks) {
     const n = await normalize(c.content);
@@ -249,6 +317,7 @@ export async function listEntries(tenant: TenantContext, kindKey: string) {
       id: schema.ragDocument.id,
       title: schema.ragDocument.title,
       collection: schema.ragDocument.collection,
+      meta: schema.ragDocument.meta,
       createdAt: schema.ragDocument.createdAt,
       updatedAt: schema.ragDocument.updatedAt,
     })
@@ -282,11 +351,18 @@ export async function listEntries(tenant: TenantContext, kindKey: string) {
 
   return docs.map((d) => {
     const c = byDoc.get(d.id);
+    const meta = d.meta as Record<string, unknown>;
     return {
-      ...d,
+      id: d.id,
+      title: d.title,
+      collection: d.collection,
+      createdAt: d.createdAt,
+      updatedAt: d.updatedAt,
       chunks: c?.chunks ?? 0,
       pending: c?.pending ?? 0,
-      body: c?.body ?? "",
+      // Canonical markdown source; chunk-content join is the fallback for entries
+      // created before meta.body existed (their headings are already gone).
+      body: typeof meta.body === "string" ? meta.body : (c?.body ?? ""),
     };
   });
 }
@@ -313,7 +389,10 @@ export async function createEntry(
     contentSha256: sha256(new TextEncoder().encode(`${kind.key}\n${input.title}\n${input.body}`)),
     authority: input.authority ?? null,
     license: "internal",
-    meta: { knowledge_kind: kind.key, manual: true },
+    // meta.body is the CANONICAL authored markdown. Chunk contents cannot reconstruct
+    // it: headings become chunk boundaries (heading_path), not chunk text — so an
+    // edit round-tripped through chunks would silently lose every `## heading`.
+    meta: { knowledge_kind: kind.key, manual: true, body: input.body },
   });
 
   const rows = await buildChunkRows(tenant, documentId, kind.collection, input.title, input.body);
@@ -362,7 +441,11 @@ export async function updateEntry(
   await db().insert(schema.ragChunk).values(rows);
   await db()
     .update(schema.ragDocument)
-    .set({ title: input.title, updatedAt: new Date() })
+    .set({
+      title: input.title,
+      meta: { ...(doc.meta as Record<string, unknown>), body: input.body },
+      updatedAt: new Date(),
+    })
     .where(eq(schema.ragDocument.id, documentId));
   const jobId = await enqueueEmbed(tenant, documentId);
 
