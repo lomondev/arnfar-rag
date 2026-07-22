@@ -1,5 +1,0 @@
-{"code":"1010","name_lo":"ເງິນສົດໃນມື","name_en":"Cash on hand","parent_code":null,"class":"asset","normal_balance":"debit","statement":"BS"}
-{"code":"1020","name_lo":"ເງິນຝາກທະນາຄານ","name_en":"Bank deposits","parent_code":null,"class":"asset","normal_balance":"debit","statement":"BS"}
-{"code":"1100","name_lo":"ລູກໜີ້ການຄ້າ","name_en":"Accounts receivable","parent_code":null,"class":"asset","normal_balance":"debit","statement":"BS"}
-{"code":"2010","name_lo":"ເຈົ້າໜີ້ການຄ້າ","name_en":"Accounts payable","parent_code":null,"class":"liability","normal_balance":"credit","statement":"BS"}
-{"code":"3010","name_lo":"ທຶນຈົດທະບຽນ","name_en":"Registered capital","parent_code":null,"class":"equity","normal_balance":"credit","statement":"BS"}
