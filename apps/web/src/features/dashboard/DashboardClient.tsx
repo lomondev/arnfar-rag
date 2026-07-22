@@ -96,7 +96,7 @@ export function DashboardClient() {
       </div>
       <div className="mt-3 grid grid-cols-3 gap-3">
         <Stat label="Glossary terms" value={`${dataset.terms.verified}/${dataset.terms.total}`} sub="verified" href="/studio/glossary" />
-        <Stat label="Accounts (CoA)" value={`${dataset.accounts.verified}/${dataset.accounts.total}`} sub="verified" href="/studio/accounts" />
+        <Stat label="Accounts (CoA)" value={`${dataset.accounts.verified}/${dataset.accounts.total}`} sub="verified" href="/studio/knowledge" />
         <Stat label="Conversations" value={String(chat.conversations)} sub={`${chat.messages} messages`} href="/chat" />
       </div>
 
