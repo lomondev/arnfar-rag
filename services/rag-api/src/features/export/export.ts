@@ -8,6 +8,7 @@ import { schema } from "@arnfar/db";
 import { and, eq, ne, sql } from "drizzle-orm";
 
 import { db } from "../../lib/db.ts";
+import { repoRoot } from "../../lib/paths.ts";
 
 /** Versioned, immutable dataset export. Every invariant is enforced in the QUERY,
  *  not a comment (CLAUDE.md):
@@ -45,7 +46,10 @@ export async function exportDataset(
   opts: { shareable?: boolean } = {},
 ): Promise<ExportResult> {
   if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error("version must be semver, e.g. 0.1.0");
-  const dir = resolve(process.cwd(), DATASET_ROOT, `v${version}`);
+  // Anchor on the repo root, not process.cwd() — dev.sh runs rag-api with
+  // cwd=services/rag-api, which would otherwise scatter exports (and defeat the
+  // immutability check by not seeing existing versions at the real root).
+  const dir = resolve(repoRoot(), DATASET_ROOT, `v${version}`);
   if (existsSync(dir)) throw new Error(`v${version} already exists — exports are immutable`);
 
   const shareable = opts.shareable ?? true;
