@@ -7,6 +7,7 @@ import { newId } from "../../lib/ids.ts";
 import { normalize, segment } from "../../lib/sidecars.ts";
 import { sha256 } from "../../lib/storage.ts";
 import { chunkBlocks, type SegBlock } from "../ingest/chunker.ts";
+import { citedQaCount, deleteDocument } from "../ingest/clean-corpus.ts";
 import { fixLaoDefects } from "../lao/clean.ts";
 
 /** Knowledge menu backend. A "kind" is a user-defined category; an "entry" is a
@@ -79,11 +80,21 @@ export async function createKind(tenant: TenantContext, input: KindInput) {
   return inserted[0] ?? null;
 }
 
-/** Deleting a kind keeps its entries (they are real documents); they just lose their
- *  menu category. The UI warns; entries remain manageable via /studio/ingest. */
-export async function deleteKind(tenant: TenantContext, id: string) {
-  const res = await db()
-    .delete(schema.knowledgeKind)
+/** Delete a kind. By default its entries survive (they are real documents and just
+ *  lose their menu category); with withEntries=true every entry document is deleted
+ *  too (chunks cascade). Bulk deletion honours the cited-QA guard unless forced. */
+export async function deleteKind(
+  tenant: TenantContext,
+  id: string,
+  opts: { withEntries?: boolean; force?: boolean } = {},
+): Promise<
+  | { id: string; key: string; deletedEntries: number; deletedChunks: number }
+  | { blocked: true; citedQa: number }
+  | null
+> {
+  const [kind] = await db()
+    .select({ id: schema.knowledgeKind.id, key: schema.knowledgeKind.key })
+    .from(schema.knowledgeKind)
     .where(
       and(
         eq(schema.knowledgeKind.id, id),
@@ -91,8 +102,65 @@ export async function deleteKind(tenant: TenantContext, id: string) {
         eq(schema.knowledgeKind.companyId, tenant.companyId),
       ),
     )
-    .returning({ id: schema.knowledgeKind.id, key: schema.knowledgeKind.key });
-  return res[0] ?? null;
+    .limit(1);
+  if (!kind) return null;
+
+  let deletedEntries = 0;
+  let deletedChunks = 0;
+  if (opts.withEntries) {
+    const res = await deleteAllEntries(tenant, kind.key, opts.force ?? false);
+    if ("blocked" in res) return res;
+    deletedEntries = res.deleted;
+    deletedChunks = res.deletedChunks;
+  }
+
+  await db().delete(schema.knowledgeKind).where(eq(schema.knowledgeKind.id, kind.id));
+  return { id: kind.id, key: kind.key, deletedEntries, deletedChunks };
+}
+
+/** Delete every entry of a kind ("delete all data"), keeping the kind itself.
+ *  Refuses (blocked) when any entry is cited by a QA pair, unless forced. */
+export async function deleteAllEntries(
+  tenant: TenantContext,
+  kindKey: string,
+  force: boolean,
+): Promise<{ deleted: number; deletedChunks: number; citedQa: number } | { blocked: true; citedQa: number }> {
+  const docs = await db()
+    .select({ id: schema.ragDocument.id })
+    .from(schema.ragDocument)
+    .where(
+      and(
+        eq(schema.ragDocument.hfId, tenant.hfId),
+        eq(schema.ragDocument.companyId, tenant.companyId),
+        sql`meta ->> 'knowledge_kind' = ${kindKey}`,
+      ),
+    );
+
+  let citedQa = 0;
+  for (const d of docs) citedQa += await citedQaCount(tenant, d.id);
+  if (citedQa > 0 && !force) return { blocked: true, citedQa };
+
+  let deleted = 0;
+  let deletedChunks = 0;
+  for (const d of docs) {
+    const res = await deleteDocument(tenant, d.id);
+    if (res) {
+      deleted++;
+      deletedChunks += res.deletedChunks;
+    }
+  }
+
+  if (deleted > 0) {
+    await db().insert(schema.outboxEvent).values({
+      id: newId(),
+      hfId: tenant.hfId,
+      aggregateType: "knowledge_kind",
+      aggregateId: docs[0]!.id,
+      eventType: "knowledge.bulk_deleted",
+      payload: { kind: kindKey, deleted, deletedChunks, citedQa },
+    });
+  }
+  return { deleted, deletedChunks, citedQa };
 }
 
 /* ── entries ──────────────────────────────────────────────────────────────── */

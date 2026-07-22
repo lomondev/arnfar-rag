@@ -38,9 +38,9 @@ import {
   type ConversationSummary,
 } from "./chatApi";
 
-const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
+import { useCollections } from "@/features/studio/useCollections";
 
-const COLLECTIONS = ["lao-accounting-law", "coa", "tax", "sop", "lao-style"] as const;
+const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
 
 /**
  * Chrome only. The language toggle never touches message content — Lao answers stay Lao
@@ -94,6 +94,7 @@ interface StreamEvent {
 }
 
 export function ChatClient() {
+  const COLLECTIONS = useCollections();
   // Sidebar list — summaries only (no messages) so the list stays cheap.
   const [summaries, setSummaries] = useState<readonly ConversationSummary[]>([]);
   // Full message thread for the active conversation (loaded on open).

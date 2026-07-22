@@ -18,8 +18,9 @@ import { Label } from "@arnfar/ui/components/label";
 import { Select } from "@arnfar/ui/components/select";
 import { cn } from "@arnfar/ui/lib/utils";
 
+import { useCollections } from "@/features/studio/useCollections";
+
 const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
-const COLLECTIONS = ["lao-accounting-law", "coa", "tax", "sop", "lao-style"] as const;
 
 /* ── API shapes (mirror rag-api) ────────────────────────────────────────── */
 
@@ -80,6 +81,7 @@ const KIND_STYLE: Record<string, string> = {
 };
 
 export function IngestClient() {
+  const COLLECTIONS = useCollections();
   /* documents */
   const [docs, setDocs] = useState<readonly DocRow[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<DocRow | null>(null);

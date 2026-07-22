@@ -2,7 +2,15 @@ import { Elysia, t } from "elysia";
 
 import { devTenant } from "../../lib/tenant.ts";
 import { citedQaCount, deleteDocument } from "../ingest/clean-corpus.ts";
-import { createEntry, createKind, deleteKind, listEntries, listKinds, updateEntry } from "./service.ts";
+import {
+  createEntry,
+  createKind,
+  deleteAllEntries,
+  deleteKind,
+  listEntries,
+  listKinds,
+  updateEntry,
+} from "./service.ts";
 
 const KEY = t.String({ minLength: 1, maxLength: 60, pattern: "^[a-z0-9][a-z0-9-]*$" });
 
@@ -30,14 +38,40 @@ export const knowledgeRoutes = new Elysia({ prefix: "/knowledge" })
       }),
     },
   )
-  .delete("/kinds/:id", async ({ params, set }) => {
-    const res = await deleteKind(devTenant(), params.id);
-    if (!res) {
-      set.status = 404;
-      return { error: "kind not found" };
-    }
-    return { ...res, deleted: true };
-  })
+  // ?withEntries=1 also deletes every entry document ("delete all data");
+  // blocked with 409 when entries are cited by QA pairs unless ?force=1.
+  .delete(
+    "/kinds/:id",
+    async ({ params, query, set }) => {
+      const res = await deleteKind(devTenant(), params.id, {
+        withEntries: query.withEntries === "1",
+        force: query.force === "1",
+      });
+      if (!res) {
+        set.status = 404;
+        return { error: "kind not found" };
+      }
+      if ("blocked" in res) {
+        set.status = 409;
+        return { error: `${res.citedQa} QA pair(s) cite entries of this kind`, citedQa: res.citedQa };
+      }
+      return { ...res, deleted: true };
+    },
+    { query: t.Object({ withEntries: t.Optional(t.String()), force: t.Optional(t.String()) }) },
+  )
+  // Bulk: delete ALL entries of a kind, keep the kind. Same cited-QA guard.
+  .delete(
+    "/entries",
+    async ({ query, set }) => {
+      const res = await deleteAllEntries(devTenant(), query.kind, query.force === "1");
+      if ("blocked" in res) {
+        set.status = 409;
+        return { error: `${res.citedQa} QA pair(s) cite entries of this kind`, citedQa: res.citedQa };
+      }
+      return res;
+    },
+    { query: t.Object({ kind: KEY, force: t.Optional(t.String()) }) },
+  )
   /* ── entries ── */
   .get(
     "/entries",

@@ -13,9 +13,9 @@ import { renderMarkdown } from "@/features/chat/markdown";
 import type { StoredMessage, StoredSource } from "@/features/chat/storage";
 import { promoteToDataset, reportWrong } from "@/features/chat/chatApi";
 
-const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
+import { useCollections } from "@/features/studio/useCollections";
 
-const COLLECTIONS = ["lao-accounting-law", "coa", "tax", "sop", "lao-style"] as const;
+const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
 
 /** Chrome only — the language toggle never touches message content (CLAUDE.md). */
 const UI = {
@@ -84,6 +84,7 @@ function isGrounded(msg: StoredMessage): boolean {
 }
 
 export function TeachClient() {
+  const COLLECTIONS = useCollections();
   const [messages, setMessages] = useState<readonly StoredMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);

@@ -1,9 +1,11 @@
 import { Elysia, t } from "elysia";
 
 import { devTenant } from "../../lib/tenant.ts";
-import { search } from "./service.ts";
+import { listCollections, search } from "./service.ts";
 
-export const searchRoutes = new Elysia({ prefix: "/search" }).post(
+export const searchRoutes = new Elysia({ prefix: "/search" })
+  .get("/collections", async () => listCollections(devTenant()))
+  .post(
   "/",
   async ({ body, query }) => {
     return search({

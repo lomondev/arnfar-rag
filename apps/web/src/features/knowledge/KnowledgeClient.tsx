@@ -15,14 +15,13 @@ import {
 } from "@arnfar/ui/components/dialog";
 import { Input } from "@arnfar/ui/components/input";
 import { Label } from "@arnfar/ui/components/label";
-import { Select } from "@arnfar/ui/components/select";
 import { Textarea } from "@arnfar/ui/components/textarea";
 import { cn } from "@arnfar/ui/lib/utils";
 
 import { AccountsClient } from "@/features/dataset/AccountsClient";
+import { useCollections } from "@/features/studio/useCollections";
 
 const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
-const COLLECTIONS = ["lao-accounting-law", "coa", "tax", "sop", "lao-style"] as const;
 
 interface Kind {
   id: string;
@@ -54,11 +53,15 @@ export function KnowledgeClient() {
   const [loadingEntries, setLoadingEntries] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const collections = useCollections();
+
   /* dialogs */
   const [kindDialog, setKindDialog] = useState(false);
   const [kindForm, setKindForm] = useState({ key: "", nameLo: "", nameEn: "", description: "", collection: "sop" });
   const [entryDialog, setEntryDialog] = useState<null | { id?: string; title: string; body: string }>(null);
   const [deleteEntry, setDeleteEntry] = useState<Entry | null>(null);
+  const [deleteAll, setDeleteAll] = useState(false);
+  const [deleteKind, setDeleteKind] = useState<Kind | null>(null);
   const [citedQa, setCitedQa] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -154,20 +157,19 @@ export function KnowledgeClient() {
     }
   }
 
-  async function doDeleteEntry(force: boolean) {
-    if (!deleteEntry) return;
+  /** Shared delete runner: row-by-row, delete-all-in-kind, and kind deletion all
+   *  follow the same 409-cited-QA → force pattern. */
+  async function runDelete(url: string, close: () => void) {
     setBusy(true);
     try {
-      const res = await fetch(`${BASE}/knowledge/entries/${deleteEntry.id}${force ? "?force=1" : ""}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(url, { method: "DELETE" });
       const data = (await res.json()) as { citedQa?: number; error?: string };
       if (res.status === 409) {
         setCitedQa(data.citedQa ?? 0);
         return;
       }
       if (!res.ok) throw new Error(data.error ?? `delete failed (${res.status})`);
-      setDeleteEntry(null);
+      close();
       setCitedQa(null);
       await Promise.all([loadEntries(selected), loadKinds()]);
     } catch (e) {
@@ -176,6 +178,28 @@ export function KnowledgeClient() {
       setBusy(false);
     }
   }
+
+  const doDeleteEntry = (force: boolean) =>
+    deleteEntry &&
+    runDelete(`${BASE}/knowledge/entries/${deleteEntry.id}${force ? "?force=1" : ""}`, () =>
+      setDeleteEntry(null),
+    );
+
+  const doDeleteAll = (force: boolean) =>
+    runDelete(
+      `${BASE}/knowledge/entries?kind=${encodeURIComponent(selected)}${force ? "&force=1" : ""}`,
+      () => setDeleteAll(false),
+    );
+
+  const doDeleteKind = (withEntries: boolean, force: boolean) =>
+    deleteKind &&
+    runDelete(
+      `${BASE}/knowledge/kinds/${deleteKind.id}?${withEntries ? "withEntries=1" : ""}${force ? "&force=1" : ""}`,
+      () => {
+        setDeleteKind(null);
+        setSelected(COA_BUILTIN);
+      },
+    );
 
   const activeKind = kinds.find((k) => k.key === selected) ?? null;
 
@@ -206,21 +230,36 @@ export function KnowledgeClient() {
             </span>
           </button>
           {kinds.map((k) => (
-            <button
+            <div
               key={k.id}
-              type="button"
-              onClick={() => setSelected(k.key)}
               className={cn(
-                "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-start text-sm transition-colors",
-                selected === k.key ? "bg-secondary font-medium" : "hover:bg-muted text-muted-foreground",
+                "group flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
+                selected === k.key ? "bg-secondary" : "hover:bg-muted",
               )}
             >
-              <BookOpen className="size-4 shrink-0" />
-              <span lang="lo" className="min-w-0 flex-1 truncate" title={k.nameLo}>
-                {k.nameLo}
-              </span>
-              <span className="text-muted-foreground text-xs tabular-nums">{k.entries}</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => setSelected(k.key)}
+                className={cn(
+                  "flex min-w-0 flex-1 items-center gap-2 text-start",
+                  selected === k.key ? "font-medium" : "text-muted-foreground",
+                )}
+              >
+                <BookOpen className="size-4 shrink-0" />
+                <span lang="lo" className="min-w-0 flex-1 truncate" title={k.nameLo}>
+                  {k.nameLo}
+                </span>
+                <span className="text-muted-foreground text-xs tabular-nums">{k.entries}</span>
+              </button>
+              <button
+                type="button"
+                title="ລຶບປະເພດ · delete kind"
+                onClick={() => { setDeleteKind(k); setCitedQa(null); }}
+                className="text-muted-foreground hover:text-destructive shrink-0 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+              >
+                <Trash2 className="size-3.5" />
+              </button>
+            </div>
           ))}
         </nav>
         {kinds.length === 0 && (
@@ -253,6 +292,16 @@ export function KnowledgeClient() {
                 )}
               </div>
               <Badge variant="secondary" className="ms-auto">collection: {activeKind?.collection}</Badge>
+              {entries.length > 0 && (
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => { setDeleteAll(true); setCitedQa(null); }}
+                  className="text-muted-foreground hover:text-destructive gap-1.5"
+                >
+                  <Trash2 className="size-3.5" /> ລຶບທັງໝົດ
+                </Button>
+              )}
               <Button size="xs" onClick={() => setEntryDialog({ title: "", body: "" })} className="gap-1.5">
                 <Plus className="size-3.5" /> ເພີ່ມຄວາມຮູ້ · add
               </Button>
@@ -341,12 +390,21 @@ export function KnowledgeClient() {
                 <Input value={kindForm.key} onChange={(e) => setKindForm((f) => ({ ...f, key: e.target.value.toLowerCase() }))} placeholder="tax-rates" className="mt-1 font-mono" />
               </div>
               <div>
-                <Label className="text-xs">collection</Label>
-                <Select value={kindForm.collection} onChange={(e) => setKindForm((f) => ({ ...f, collection: e.target.value }))} className="mt-1">
-                  {COLLECTIONS.map((c) => (
-                    <option key={c} value={c}>{c}</option>
+                <Label className="text-xs">collection (ເລືອກ ຫຼື ພິມສ້າງໃໝ່)</Label>
+                <Input
+                  list="knowledge-collections"
+                  value={kindForm.collection}
+                  onChange={(e) =>
+                    setKindForm((f) => ({ ...f, collection: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-") }))
+                  }
+                  placeholder="sop | tax | hr-policy…"
+                  className="mt-1 font-mono"
+                />
+                <datalist id="knowledge-collections">
+                  {collections.map((c) => (
+                    <option key={c} value={c} />
                   ))}
-                </Select>
+                </datalist>
               </div>
             </div>
             <div>
@@ -397,6 +455,74 @@ export function KnowledgeClient() {
               className="gap-1.5"
             >
               {busy && <Loader2 className="size-4 animate-spin" />} ບັນທຶກ
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── delete ALL entries of the kind ── */}
+      <Dialog open={deleteAll} onOpenChange={(o) => { if (!o) { setDeleteAll(false); setCitedQa(null); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle lang="lo">ລຶບຄວາມຮູ້ທັງໝົດ ໃນ "{activeKind?.nameLo ?? selected}"?</DialogTitle>
+            <DialogDescription lang="lo">
+              {entries.length} ລາຍການ ຈະຖືກລຶບຖາວອນ — AI ຈະບໍ່ເຫັນພວກມັນອີກ. ປະເພດຍັງຄົງຢູ່.
+            </DialogDescription>
+          </DialogHeader>
+          {citedQa !== null && citedQa > 0 && (
+            <p className="border-amber-500/40 bg-amber-500/10 rounded-lg border px-3 py-2 text-sm">
+              {citedQa} QA pair(s) cite these entries — ລຶບແລ້ວ QA ເຫຼົ່ານັ້ນ export ບໍ່ໄດ້.
+            </p>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => { setDeleteAll(false); setCitedQa(null); }}>ຍົກເລີກ</Button>
+            <Button
+              variant="destructive"
+              disabled={busy}
+              onClick={() => void doDeleteAll(citedQa !== null && citedQa > 0)}
+              className="gap-1.5"
+            >
+              {busy && <Loader2 className="size-4 animate-spin" />}
+              {citedQa !== null && citedQa > 0 ? "ລຶບເຖິງແມ່ນ QA ຈະເສຍ" : `ລຶບທັງໝົດ (${entries.length})`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── delete kind (keep or purge its entries) ── */}
+      <Dialog open={deleteKind !== null} onOpenChange={(o) => { if (!o) { setDeleteKind(null); setCitedQa(null); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle lang="lo">ລຶບປະເພດ "{deleteKind?.nameLo}"?</DialogTitle>
+            <DialogDescription lang="lo">
+              {deleteKind?.entries ?? 0} ລາຍການ ຢູ່ໃນປະເພດນີ້. ເລືອກວ່າ ຈະເກັບຂໍ້ມູນໄວ້ ຫຼື ລຶບທັງໝົດ.
+            </DialogDescription>
+          </DialogHeader>
+          {citedQa !== null && citedQa > 0 && (
+            <p className="border-amber-500/40 bg-amber-500/10 rounded-lg border px-3 py-2 text-sm">
+              {citedQa} QA pair(s) cite entries of this kind — ລຶບແລ້ວ QA ເຫຼົ່ານັ້ນ export ບໍ່ໄດ້.
+            </p>
+          )}
+          <DialogFooter className="flex-wrap gap-2">
+            <Button variant="ghost" onClick={() => { setDeleteKind(null); setCitedQa(null); }}>ຍົກເລີກ</Button>
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => void doDeleteKind(false, false)}
+              className="gap-1.5"
+            >
+              ລຶບປະເພດ, ເກັບຂໍ້ມູນໄວ້
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={busy}
+              onClick={() => void doDeleteKind(true, citedQa !== null && citedQa > 0)}
+              className="gap-1.5"
+            >
+              {busy && <Loader2 className="size-4 animate-spin" />}
+              {citedQa !== null && citedQa > 0
+                ? "ລຶບໝົດ ເຖິງແມ່ນ QA ຈະເສຍ"
+                : `ລຶບໝົດ + ${deleteKind?.entries ?? 0} ລາຍການ`}
             </Button>
           </DialogFooter>
         </DialogContent>
