@@ -5,6 +5,8 @@ import { Elysia, t } from "elysia";
 import { db } from "../../lib/db.ts";
 import { devTenant } from "../../lib/tenant.ts";
 import { ingestDocx } from "./pipeline.ts";
+import { previewDocx } from "./preview.ts";
+import { citedQaCount, deleteDocument, retroClean } from "./clean-corpus.ts";
 
 async function jobStatus(id: string, hfId: string, companyId: string) {
   const [job] = await db()
@@ -43,6 +45,50 @@ async function jobStatus(id: string, hfId: string, companyId: string) {
 }
 
 export const ingestRoutes = new Elysia({ prefix: "/ingest" })
+  // Dry-run: extract → clean report → chunk boundaries. Nothing is written; this is the
+  // workbench's Clean + Chunk preview before the curator commits via POST /docx.
+  .post(
+    "/preview",
+    async ({ body, set }) => {
+      const file = body.file;
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      try {
+        return await previewDocx(bytes, file.name || "upload.docx");
+      } catch (err) {
+        set.status = 422;
+        return { error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+    { body: t.Object({ file: t.File() }) },
+  )
+  // Scan (dryRun) or fix the existing corpus's Lao defects. Fixes touch content_norm +
+  // content_seg only, null affected embeddings, and enqueue re-embed jobs.
+  .post(
+    "/retro-clean",
+    async ({ body }) => retroClean(devTenant(), body.dryRun ?? true),
+    { body: t.Object({ dryRun: t.Optional(t.Boolean()) }) },
+  )
+  // Delete a document (chunks cascade, accounts detach, storage original kept).
+  // `citedQa` warns the caller how many QA pairs will lose citations — the UI surfaces
+  // it in the confirm dialog before the second, forced call.
+  .delete(
+    "/documents/:id",
+    async ({ params, query, set }) => {
+      const tenant = devTenant();
+      const cited = await citedQaCount(tenant, params.id);
+      if (cited > 0 && query.force !== "1") {
+        set.status = 409;
+        return { error: `${cited} QA pair(s) cite this document's chunks`, citedQa: cited };
+      }
+      const res = await deleteDocument(tenant, params.id);
+      if (!res) {
+        set.status = 404;
+        return { error: "document not found" };
+      }
+      return { ...res, citedQa: cited };
+    },
+    { query: t.Object({ force: t.Optional(t.String()) }) },
+  )
   .post(
     "/docx",
     async ({ body, set }) => {

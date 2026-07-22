@@ -6,6 +6,8 @@ import { usePathname } from "next/navigation";
 import { cn } from "@arnfar/ui/lib/utils";
 
 const TABS = [
+  { href: "/studio/teach", label: "Teach" },
+  { href: "/studio/ingest", label: "Ingest" },
   { href: "/studio/review", label: "Review" },
   { href: "/studio/qa", label: "QA" },
   { href: "/studio/glossary", label: "Glossary" },

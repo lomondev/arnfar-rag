@@ -41,8 +41,10 @@ venv/
 
 # datasets: track manifests via git-lfs, ignore local scratch exports
 datasets/**/*.jsonl.tmp
-# stray exports written when rag-api runs with cwd=services/rag-api (export path is cwd-relative)
+# stray outputs written when rag-api ran with cwd=services/rag-api (paths were cwd-relative;
+# fixed via repoRoot(), kept ignored so old strays can't be committed)
 services/*/datasets/
+services/*/storage/
 
 # dev.sh process logs + pids
 .logs/
