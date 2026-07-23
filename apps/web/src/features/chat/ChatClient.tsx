@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUp,
   BookOpen,
@@ -108,6 +108,27 @@ interface StreamEvent {
   readonly conversationId?: string;
 }
 
+/** How often buffered stream tokens are flushed into React state. SEA-LION emits
+ *  CHARACTER-level tokens for Lao; a setState per character re-renders the whole
+ *  thread hundreds of times per answer and the UI freezes on long tables. ~12 fps
+ *  still reads as live typing. */
+const STREAM_FLUSH_MS = 80;
+
+/** Markdown body of one message, memoized so completed messages skip re-parsing
+ *  while a later answer streams — only the in-flight message re-renders per flush.
+ *  `onOpenSource` must be referentially stable (a useState setter is). */
+const MessageBody = memo(function MessageBody({
+  content,
+  sources,
+  onOpenSource,
+}: {
+  content: string;
+  sources?: readonly StoredSource[];
+  onOpenSource: (s: StoredSource | null) => void;
+}) {
+  return <>{renderMarkdown(content, (n) => onOpenSource(sources?.[n - 1] ?? null))}</>;
+});
+
 export function ChatClient() {
   const KINDS = useKnowledgeKinds();
   const MODELS = useModels();
@@ -135,6 +156,10 @@ export function ChatClient() {
   const [model, setModel] = useState("");
 
   const abortRef = useRef<AbortController | null>(null);
+  // Which conversation an answer is currently streaming into — guards the thread-load
+  // effect against clobbering the optimistic draft (see the effect below).
+  const streamingRef = useRef(false);
+  const streamConvIdRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -165,11 +190,18 @@ export function ChatClient() {
   }, [model, hydrated]);
 
   // When the active conversation changes, load its full message thread.
+  //
+  // EXCEPT while an answer is streaming into that very conversation: the server's
+  // `created` frame sets activeId, and refetching here would replace the optimistic
+  // thread with the server copy — which does not contain the assistant draft yet.
+  // That deleted the streaming message, every token patched a dead index, and answers
+  // looked stuck until the user clicked away and back.
   useEffect(() => {
     if (!activeId) {
       setActiveThread(null);
       return;
     }
+    if (streamingRef.current && activeId === streamConvIdRef.current) return;
     let cancelled = false;
     void getConversation(activeId)
       .then((conv) => {
@@ -258,6 +290,23 @@ export function ChatClient() {
     setPhaseSources(0);
     const ctrl = new AbortController();
     abortRef.current = ctrl;
+    streamingRef.current = true;
+    streamConvIdRef.current = existingConvId;
+
+    // Token batching: accumulate streamed characters here and flush on a short timer.
+    // One setState per flush instead of per character keeps long tables smooth.
+    let pending = "";
+    let flushTimer: number | null = null;
+    const flushPending = () => {
+      if (flushTimer !== null) {
+        window.clearTimeout(flushTimer);
+        flushTimer = null;
+      }
+      if (!pending) return;
+      const chunk = pending;
+      pending = "";
+      patchMessage(assistantIdx, (m) => ({ ...m, content: m.content + chunk }));
+    };
 
     try {
       const res = await fetch(`${BASE}/chat/stream`, {
@@ -298,6 +347,7 @@ export function ChatClient() {
             // Reconcile: the server assigned the real conversation id. Wire it into state
             // and refresh the sidebar so the new thread appears.
             serverConvId = ev.conversationId;
+            streamConvIdRef.current = serverConvId;
             setActiveThread((cur) => (cur && cur.id === "pending" ? { ...cur, id: serverConvId! } : cur));
             setActiveId(serverConvId);
             void listConversations().then(setSummaries).catch(() => {});
@@ -307,8 +357,15 @@ export function ChatClient() {
             setPhase("reading");
           } else if (ev.type === "token") {
             setPhase((cur) => (cur === "writing" ? cur : "writing"));
-            patchMessage(assistantIdx, (m) => ({ ...m, content: m.content + (ev.t ?? "") }));
+            pending += ev.t ?? "";
+            if (flushTimer === null) {
+              flushTimer = window.setTimeout(() => {
+                flushTimer = null;
+                flushPending();
+              }, STREAM_FLUSH_MS);
+            }
           } else if (ev.type === "error") {
+            flushPending(); // keep token order ahead of the error note
             patchMessage(assistantIdx, (m) => ({
               ...m,
               content: `${m.content}\n\n_[error: ${ev.error ?? "unknown"}]_`,
@@ -320,12 +377,16 @@ export function ChatClient() {
       if (serverConvId) void listConversations().then(setSummaries).catch(() => {});
     } catch (e) {
       if ((e as Error).name !== "AbortError") {
+        flushPending();
         patchMessage(assistantIdx, (m) => ({
           ...m,
           content: `${m.content}\n\n_[error: ${(e as Error).message}]_`,
         }));
       }
     } finally {
+      flushPending(); // whatever arrived since the last timer tick
+      streamingRef.current = false;
+      streamConvIdRef.current = null;
       setStreaming(false);
       setPhase(null);
       abortRef.current = null;
@@ -538,7 +599,7 @@ export function ChatClient() {
                   <div key={i} className="mb-8">
                     <div className="text-[1.02rem]">
                       {msg.content ? (
-                        renderMarkdown(msg.content, (n) => setPanel(msg.sources?.[n - 1] ?? null))
+                        <MessageBody content={msg.content} sources={msg.sources} onOpenSource={setPanel} />
                       ) : streaming && i === messages.length - 1 ? (
                         <StreamProgress phase={phase ?? "searching"} sources={phaseSources} labels={t} />
                       ) : (

@@ -272,8 +272,22 @@ export function renderMarkdown(text: string, onCite: CiteHandler): ReactNode {
 
     // Pipe table. Accounting answers lean on these (account rows, rate schedules), and a
     // table flattened into prose is unreadable — so it gets real <table> semantics.
-    if (isTableRow(line) && isTableDivider(lines[i + 1] ?? "")) {
-      const header = tableCells(line);
+    // The generator sometimes prefixes the header line with inline text — typically a
+    // citation, `[2] | ລຳດັບ | … |` — so accept any line whose pipe-part is followed by a
+    // divider, and render the prefix as its own inline paragraph above the table.
+    const headerPipeAt = isTableDivider(lines[i + 1] ?? "") && line.trimEnd().endsWith("|")
+      ? line.indexOf("|")
+      : -1;
+    if (headerPipeAt >= 0 && line.slice(headerPipeAt).split("|").length > 2) {
+      const prefix = line.slice(0, headerPipeAt).trim();
+      if (prefix) {
+        blocks.push(
+          <p key={`${key}-pre`} lang="lo" className="my-2 leading-[1.8]">
+            {renderInline(prefix, onCite, `${key}-pre`)}
+          </p>,
+        );
+      }
+      const header = tableCells(line.slice(headerPipeAt));
       i += 2;
       const rows: string[][] = [];
       while (i < lines.length && isTableRow(lines[i] ?? "")) {
@@ -362,6 +376,14 @@ export function renderMarkdown(text: string, onCite: CiteHandler): ReactNode {
         break;
       }
       para.push(l);
+      i++;
+    }
+    // GUARANTEED PROGRESS: a table row whose divider line hasn't streamed in yet matches
+    // no block branch above AND breaks this loop with `i` unmoved — without consuming it
+    // the outer while spins forever and the tab hard-freezes mid-stream. Render the
+    // orphan line as plain text; the next flush re-parses it into a real table.
+    if (para.length === 0) {
+      para.push(lines[i] ?? "");
       i++;
     }
     blocks.push(

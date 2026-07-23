@@ -143,6 +143,21 @@ export function TeachClient() {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
 
+    // Token batching (same as ChatClient): SEA-LION streams character-level tokens for
+    // Lao; one setState per character re-renders the whole thread and stalls on tables.
+    let pending = "";
+    let flushTimer: number | null = null;
+    const flushPending = () => {
+      if (flushTimer !== null) {
+        window.clearTimeout(flushTimer);
+        flushTimer = null;
+      }
+      if (!pending) return;
+      const chunk = pending;
+      pending = "";
+      patchMessage(assistantIdx, (m) => ({ ...m, content: m.content + chunk }));
+    };
+
     try {
       const res = await fetch(`${BASE}/chat/stream`, {
         method: "POST",
@@ -176,8 +191,15 @@ export function TeachClient() {
           } else if (ev.type === "citations") {
             patchMessage(assistantIdx, (m) => ({ ...m, sources: ev.sources ?? [] }));
           } else if (ev.type === "token") {
-            patchMessage(assistantIdx, (m) => ({ ...m, content: m.content + (ev.t ?? "") }));
+            pending += ev.t ?? "";
+            if (flushTimer === null) {
+              flushTimer = window.setTimeout(() => {
+                flushTimer = null;
+                flushPending();
+              }, 80);
+            }
           } else if (ev.type === "error") {
+            flushPending();
             patchMessage(assistantIdx, (m) => ({
               ...m,
               content: `${m.content}\n\n_[error: ${ev.error ?? "unknown"}]_`,
@@ -187,12 +209,14 @@ export function TeachClient() {
       }
     } catch (e) {
       if ((e as Error).name !== "AbortError") {
+        flushPending();
         patchMessage(assistantIdx, (m) => ({
           ...m,
           content: `${m.content}\n\n_[error: ${(e as Error).message}]_`,
         }));
       }
     } finally {
+      flushPending();
       setStreaming(false);
       abortRef.current = null;
     }
