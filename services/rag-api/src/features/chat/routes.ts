@@ -3,6 +3,8 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { Elysia, t } from "elysia";
 
 import { db } from "../../lib/db.ts";
+import { env } from "../../lib/env.ts";
+import { listGenModels } from "../../lib/ollama.ts";
 import { devTenant } from "../../lib/tenant.ts";
 import {
   createConversation,
@@ -76,6 +78,15 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
     },
   )
 
+  // ── Installed generator models (for the /chat model picker) ───────────────
+  // Only rag-api may touch Ollama (CLAUDE.md), so the web app fetches the model list
+  // through here rather than hitting Ollama's /api/tags directly.
+  .get("/models", async () => {
+    const installed = await listGenModels().catch(() => [] as string[]);
+    const models = installed.includes(env.genModel) ? installed : [env.genModel, ...installed];
+    return { default: env.genModel, models };
+  })
+
   // ── Multi-turn streaming chat ──────────────────────────────────────────────
   .post(
     "/stream",
@@ -87,6 +98,7 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
         signal: request.signal, // aborting the HTTP request cancels Ollama
         ...(body.conversationId ? { conversationId: body.conversationId } : {}),
         ...(body.collections ? { collections: body.collections } : {}),
+        ...(body.kinds ? { kinds: body.kinds } : {}),
         ...(body.k ? { k: body.k } : {}),
         ...(body.model ? { model: body.model } : {}),
       });
@@ -119,6 +131,7 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
         message: t.String({ minLength: 1 }),
         conversationId: t.Optional(t.String()),
         collections: t.Optional(t.Array(t.String())),
+        kinds: t.Optional(t.Array(t.String())),
         k: t.Optional(t.Number({ minimum: 1, maximum: 20 })),
         model: t.Optional(t.String()),
       }),

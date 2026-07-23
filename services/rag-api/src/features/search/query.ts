@@ -26,6 +26,8 @@ export interface SearchHit {
 export interface HybridSearchParams {
   tenant: TenantContext;
   collections: string[];
+  /** Scope to knowledge kinds (chunk meta.knowledge_kind). Empty = no kind filter. */
+  kinds: string[];
   queryEmbedding: number[];
   querySeg: string;
   k: number;
@@ -51,12 +53,17 @@ function rrfQuery(p: HybridSearchParams, cand: number) {
   const collPred = p.collections.length
     ? sql`AND collection IN (${sql.join(p.collections.map((c) => sql`${c}`), sql`, `)})`
     : sql``;
+  // Kind scoping reads the chunk's own meta — no rag_document join inside the ANN CTEs.
+  const kindPred = p.kinds.length
+    ? sql`AND meta ->> 'knowledge_kind' IN (${sql.join(p.kinds.map((x) => sql`${x}`), sql`, `)})`
+    : sql``;
   return sql`
     WITH dense AS (
       SELECT id, ROW_NUMBER() OVER (ORDER BY embedding <=> ${vec}::halfvec) AS rank
       FROM rag_chunk
       WHERE hf_id = ${p.tenant.hfId} AND company_id = ${p.tenant.companyId}
         ${collPred}
+        ${kindPred}
         AND review <> 'rejected' AND embedding IS NOT NULL
       ORDER BY embedding <=> ${vec}::halfvec
       LIMIT ${cand}
@@ -67,6 +74,7 @@ function rrfQuery(p: HybridSearchParams, cand: number) {
       FROM rag_chunk
       WHERE hf_id = ${p.tenant.hfId} AND company_id = ${p.tenant.companyId}
         ${collPred}
+        ${kindPred}
         AND review <> 'rejected'
         AND fts @@ plainto_tsquery('simple', ${p.querySeg})
       LIMIT ${cand}

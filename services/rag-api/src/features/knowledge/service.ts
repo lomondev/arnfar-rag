@@ -239,6 +239,7 @@ async function buildChunkRows(
   collection: string,
   title: string,
   body: string,
+  kindKey: string,
 ) {
   const parsed = parseMarkdownBlocks(title, body);
   const segBlocks: SegBlock[] = [];
@@ -291,7 +292,9 @@ async function buildChunkRows(
       review: "accepted" as const,
       reviewedBy: "knowledge",
       reviewedAt: new Date(),
-      meta: { manual: true },
+      // knowledge_kind on the CHUNK lets retrieval scope to a kind without joining
+      // rag_document (chat's "ask only my tax rates" picker).
+      meta: { manual: true, knowledge_kind: kindKey },
     });
   }
   return rows;
@@ -395,7 +398,7 @@ export async function createEntry(
     meta: { knowledge_kind: kind.key, manual: true, body: input.body },
   });
 
-  const rows = await buildChunkRows(tenant, documentId, kind.collection, input.title, input.body);
+  const rows = await buildChunkRows(tenant, documentId, kind.collection, input.title, input.body, kind.key);
   await db().insert(schema.ragChunk).values(rows);
   const jobId = await enqueueEmbed(tenant, documentId);
 
@@ -437,7 +440,8 @@ export async function updateEntry(
   if (!doc) return null;
 
   await db().delete(schema.ragChunk).where(eq(schema.ragChunk.documentId, documentId));
-  const rows = await buildChunkRows(tenant, documentId, doc.collection, input.title, input.body);
+  const kindKey = String((doc.meta as Record<string, unknown>).knowledge_kind ?? "");
+  const rows = await buildChunkRows(tenant, documentId, doc.collection, input.title, input.body, kindKey);
   await db().insert(schema.ragChunk).values(rows);
   await db()
     .update(schema.ragDocument)

@@ -22,6 +22,8 @@ export const CANONICAL_COLLECTIONS = [
 export interface SearchParams {
   query: string;
   collections?: string[];
+  /** Scope retrieval to these knowledge kinds (chunk meta.knowledge_kind). */
+  kinds?: string[];
   k?: number;
   tenant: TenantContext;
   explain?: boolean;
@@ -81,6 +83,7 @@ export async function search(p: SearchParams): Promise<SearchResponse> {
   const result = await hybridSearch({
     tenant: p.tenant,
     collections,
+    kinds: p.kinds ?? [],
     queryEmbedding,
     querySeg,
     k,

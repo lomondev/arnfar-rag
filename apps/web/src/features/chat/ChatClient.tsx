@@ -42,7 +42,8 @@ import {
   type ConversationSummary,
 } from "./chatApi";
 
-import { useCollections } from "@/features/studio/useCollections";
+import { useCollections, useKnowledgeKinds } from "@/features/studio/useCollections";
+import { shortModel, useModels } from "./useModels";
 
 const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
 
@@ -109,6 +110,8 @@ interface StreamEvent {
 
 export function ChatClient() {
   const COLLECTIONS = useCollections();
+  const KINDS = useKnowledgeKinds();
+  const MODELS = useModels();
   // Sidebar list — summaries only (no messages) so the list stays cheap.
   const [summaries, setSummaries] = useState<readonly ConversationSummary[]>([]);
   // Full message thread for the active conversation (loaded on open).
@@ -127,7 +130,11 @@ export function ChatClient() {
   const [panel, setPanel] = useState<StoredSource | null>(null);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [k, setK] = useState(8);
-  const [collection, setCollection] = useState("");
+  // Retrieval scope: "" = everything, "kind:KEY" = one knowledge kind's entries,
+  // "col:NAME" = one raw collection. Kinds first — users think in their own
+  // categories from /studio/knowledge, not in collection slugs.
+  const [scope, setScope] = useState("");
+  const [model, setModel] = useState("");
 
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -135,15 +142,29 @@ export function ChatClient() {
 
   const t = UI[lang];
   const messages = activeThread?.messages ?? [];
+  const modelLabel = shortModel(model || MODELS.default || "SEA-LION");
 
   // Load the conversation list from the server after mount (avoid hydration mismatch).
   useEffect(() => {
     void listConversations().then(setSummaries).catch(() => setSummaries([]));
     const storedLang = localStorage.getItem("arnfar.chat.lang");
     if (storedLang === "lo" || storedLang === "en") setLang(storedLang);
+    const storedModel = localStorage.getItem("arnfar.chat.model");
+    if (storedModel) setModel(storedModel);
     setTheme(document.documentElement.classList.contains("dark") ? "dark" : "light");
     setHydrated(true);
   }, []);
+
+  // Default the picker to the server's configured generator once the list loads, unless the
+  // user already has a stored choice. Falls back cleanly if that model was later removed.
+  useEffect(() => {
+    if (MODELS.models.length === 0) return;
+    setModel((cur) => (cur && MODELS.models.includes(cur) ? cur : MODELS.default));
+  }, [MODELS]);
+
+  useEffect(() => {
+    if (hydrated && model) localStorage.setItem("arnfar.chat.model", model);
+  }, [model, hydrated]);
 
   // When the active conversation changes, load its full message thread.
   useEffect(() => {
@@ -250,7 +271,9 @@ export function ChatClient() {
           message: q,
           k,
           ...(existingConvId ? { conversationId: existingConvId } : {}),
-          ...(collection ? { collections: [collection] } : {}),
+          ...(scope.startsWith("kind:") ? { kinds: [scope.slice(5)] } : {}),
+          ...(scope.startsWith("col:") ? { collections: [scope.slice(4)] } : {}),
+          ...(model ? { model } : {}),
         }),
         signal: ctrl.signal,
       });
@@ -487,7 +510,7 @@ export function ChatClient() {
           )}
           <span className="text-sm font-medium">Arnfar Chat</span>
           <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-[0.7rem]">
-            SEA-LION · {t.subtitle}
+            {modelLabel} · {t.subtitle}
           </span>
         </header>
 
@@ -501,7 +524,7 @@ export function ChatClient() {
                 <p lang="lo" className="text-xl font-semibold">
                   {t.greeting}
                 </p>
-                <p className="text-muted-foreground mt-1.5 text-sm">SEA-LION · {t.subtitle}</p>
+                <p className="text-muted-foreground mt-1.5 text-sm">{modelLabel} · {t.subtitle}</p>
               </div>
             ) : (
               messages.map((msg, i) =>
@@ -627,17 +650,46 @@ export function ChatClient() {
                 />
               </label>
               <Select
-                value={collection}
-                onChange={(e) => setCollection(e.target.value)}
+                value={scope}
+                onChange={(e) => setScope(e.target.value)}
                 className="h-7"
+                title="ຂອບເຂດຄວາມຮູ້ · knowledge scope"
               >
-                <option value="">all collections</option>
-                {COLLECTIONS.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
+                <option value="">ຄວາມຮູ້ທັງໝົດ · all knowledge</option>
+                {KINDS.length > 0 && (
+                  <optgroup label="ປະເພດຄວາມຮູ້ · knowledge">
+                    {KINDS.map((kd) => (
+                      <option key={kd.key} value={`kind:${kd.key}`}>
+                        {kd.nameLo}
+                        {kd.nameEn ? ` · ${kd.nameEn}` : ""}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="collections">
+                  {COLLECTIONS.map((c) => (
+                    <option key={c} value={`col:${c}`}>
+                      {c}
+                    </option>
+                  ))}
+                </optgroup>
               </Select>
+
+              {MODELS.models.length > 1 && (
+                <Select
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  className="h-7"
+                  title="ໂມເດວ · model"
+                >
+                  {MODELS.models.map((m) => (
+                    <option key={m} value={m}>
+                      {shortModel(m)}
+                      {m === MODELS.default ? " ★" : ""}
+                    </option>
+                  ))}
+                </Select>
+              )}
 
               <span className="ms-auto hidden sm:inline">{t.hint}</span>
 

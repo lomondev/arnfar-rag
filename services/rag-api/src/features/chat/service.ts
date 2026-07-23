@@ -19,6 +19,8 @@ export interface ChatParams {
   message: string;
   conversationId?: string;
   collections?: string[];
+  /** Scope retrieval to knowledge kinds (the /chat picker's kind entries). */
+  kinds?: string[];
   k?: number;
   model?: string;
   tenant: TenantContext;
@@ -92,6 +94,7 @@ export async function* chatStream(p: ChatParams): AsyncGenerator<ChatEvent> {
     const result = await search({
       query: p.message,
       collections: p.collections ?? [],
+      kinds: p.kinds ?? [],
       k: p.k ?? 8,
       tenant: p.tenant,
     });
