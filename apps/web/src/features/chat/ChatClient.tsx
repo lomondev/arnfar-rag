@@ -42,7 +42,7 @@ import {
   type ConversationSummary,
 } from "./chatApi";
 
-import { useCollections, useKnowledgeKinds } from "@/features/studio/useCollections";
+import { useKnowledgeKinds } from "@/features/studio/useCollections";
 import { shortModel, useModels } from "./useModels";
 
 const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
@@ -109,7 +109,6 @@ interface StreamEvent {
 }
 
 export function ChatClient() {
-  const COLLECTIONS = useCollections();
   const KINDS = useKnowledgeKinds();
   const MODELS = useModels();
   // Sidebar list — summaries only (no messages) so the list stays cheap.
@@ -130,9 +129,8 @@ export function ChatClient() {
   const [panel, setPanel] = useState<StoredSource | null>(null);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [k, setK] = useState(8);
-  // Retrieval scope: "" = everything, "kind:KEY" = one knowledge kind's entries,
-  // "col:NAME" = one raw collection. Kinds first — users think in their own
-  // categories from /studio/knowledge, not in collection slugs.
+  // Retrieval scope: "" = all knowledge, "kind:KEY" = one knowledge kind's entries.
+  // Users think in their /studio/knowledge categories — raw collections are not exposed.
   const [scope, setScope] = useState("");
   const [model, setModel] = useState("");
 
@@ -272,7 +270,6 @@ export function ChatClient() {
           k,
           ...(existingConvId ? { conversationId: existingConvId } : {}),
           ...(scope.startsWith("kind:") ? { kinds: [scope.slice(5)] } : {}),
-          ...(scope.startsWith("col:") ? { collections: [scope.slice(4)] } : {}),
           ...(model ? { model } : {}),
         }),
         signal: ctrl.signal,
@@ -666,13 +663,6 @@ export function ChatClient() {
                     ))}
                   </optgroup>
                 )}
-                <optgroup label="collections">
-                  {COLLECTIONS.map((c) => (
-                    <option key={c} value={`col:${c}`}>
-                      {c}
-                    </option>
-                  ))}
-                </optgroup>
               </Select>
 
               {MODELS.models.length > 1 && (
