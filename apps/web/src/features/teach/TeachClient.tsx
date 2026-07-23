@@ -13,7 +13,8 @@ import { renderMarkdown } from "@/features/chat/markdown";
 import type { StoredMessage, StoredSource } from "@/features/chat/storage";
 import { promoteToDataset, reportWrong } from "@/features/chat/chatApi";
 
-import { useCollections } from "@/features/studio/useCollections";
+import { useKnowledgeKinds } from "@/features/studio/useCollections";
+import { shortModel, useModels } from "@/features/chat/useModels";
 
 const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
 
@@ -84,13 +85,16 @@ function isGrounded(msg: StoredMessage): boolean {
 }
 
 export function TeachClient() {
-  const COLLECTIONS = useCollections();
+  const KINDS = useKnowledgeKinds();
+  const MODELS = useModels();
   const [messages, setMessages] = useState<readonly StoredMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [lang, setLang] = useState<Lang>("lo");
   const [k, setK] = useState(8);
-  const [collection, setCollection] = useState("");
+  // Same scope semantics as /chat: "" = all knowledge, "kind:KEY" = one kind.
+  const [scope, setScope] = useState("");
+  const [model, setModel] = useState("");
   /** Which assistant message's sources fill the rail (defaults to the latest). */
   const [railIdx, setRailIdx] = useState<number | null>(null);
   const [focusN, setFocusN] = useState<number | null>(null);
@@ -109,7 +113,19 @@ export function TeachClient() {
   useEffect(() => {
     const stored = localStorage.getItem("arnfar.chat.lang");
     if (stored === "lo" || stored === "en") setLang(stored);
+    const storedModel = localStorage.getItem("arnfar.chat.model");
+    if (storedModel) setModel(storedModel);
   }, []);
+
+  // Default to the server's configured generator once the list arrives (same as /chat).
+  useEffect(() => {
+    if (MODELS.models.length === 0) return;
+    setModel((cur) => (cur && MODELS.models.includes(cur) ? cur : MODELS.default));
+  }, [MODELS]);
+
+  useEffect(() => {
+    if (model) localStorage.setItem("arnfar.chat.model", model);
+  }, [model]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -166,7 +182,8 @@ export function TeachClient() {
           message: q,
           k,
           ...(convIdRef.current ? { conversationId: convIdRef.current } : {}),
-          ...(collection ? { collections: [collection] } : {}),
+          ...(scope.startsWith("kind:") ? { kinds: [scope.slice(5)] } : {}),
+          ...(model ? { model } : {}),
         }),
         signal: ctrl.signal,
       });
@@ -494,14 +511,39 @@ export function TeachClient() {
                   className="h-7 w-14"
                 />
               </label>
-              <Select value={collection} onChange={(e) => setCollection(e.target.value)} className="h-7">
-                <option value="">all collections</option>
-                {COLLECTIONS.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
+              <Select
+                value={scope}
+                onChange={(e) => setScope(e.target.value)}
+                className="h-7"
+                title="ຂອບເຂດຄວາມຮູ້ · knowledge scope"
+              >
+                <option value="">ຄວາມຮູ້ທັງໝົດ · all knowledge</option>
+                {KINDS.length > 0 && (
+                  <optgroup label="ປະເພດຄວາມຮູ້ · knowledge">
+                    {KINDS.map((kd) => (
+                      <option key={kd.key} value={`kind:${kd.key}`}>
+                        {kd.nameLo}
+                        {kd.nameEn ? ` · ${kd.nameEn}` : ""}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </Select>
+              {MODELS.models.length > 1 && (
+                <Select
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  className="h-7"
+                  title="ໂມເດວ · model"
+                >
+                  {MODELS.models.map((m) => (
+                    <option key={m} value={m}>
+                      {shortModel(m)}
+                      {m === MODELS.default ? " ★" : ""}
+                    </option>
+                  ))}
+                </Select>
+              )}
               <span className="ms-auto hidden sm:inline">{t.hint}</span>
               {streaming ? (
                 <Button
