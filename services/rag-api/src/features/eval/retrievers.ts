@@ -13,18 +13,20 @@ export interface RetrieveParams {
   k: number;
 }
 
-function collList(collections: string[]) {
-  return sql.join(
+/** Empty list = no collection filter (collections are user-creatable). */
+function collPred(collections: string[]) {
+  if (!collections.length) return sql``;
+  return sql`AND collection IN (${sql.join(
     collections.map((c) => sql`${c}`),
     sql`, `,
-  );
+  )})`;
 }
 
 /** Return chunk ids in rank order for a retrieval mode. All modes carry the tenant
  *  predicate and exclude rejected chunks (CLAUDE.md). */
 export async function retrieve(mode: Retriever, p: RetrieveParams): Promise<string[]> {
   const vec = `[${p.queryEmbedding.join(",")}]`;
-  const cols = collList(p.collections);
+  const cols = collPred(p.collections);
 
   return db().transaction(async (tx) => {
     if (mode !== "lexical") {
@@ -36,7 +38,7 @@ export async function retrieve(mode: Retriever, p: RetrieveParams): Promise<stri
       const rows = (await tx.execute(sql`
         SELECT id FROM rag_chunk
         WHERE hf_id = ${p.tenant.hfId} AND company_id = ${p.tenant.companyId}
-          AND collection IN (${cols}) AND review <> 'rejected' AND embedding IS NOT NULL
+          ${cols} AND review <> 'rejected' AND embedding IS NOT NULL
         ORDER BY embedding <=> ${vec}::halfvec
         LIMIT ${p.k}
       `)) as unknown as Array<{ id: string }>;
@@ -47,7 +49,7 @@ export async function retrieve(mode: Retriever, p: RetrieveParams): Promise<stri
       const rows = (await tx.execute(sql`
         SELECT id FROM rag_chunk
         WHERE hf_id = ${p.tenant.hfId} AND company_id = ${p.tenant.companyId}
-          AND collection IN (${cols}) AND review <> 'rejected'
+          ${cols} AND review <> 'rejected'
           AND fts @@ plainto_tsquery('simple', ${p.querySeg})
         ORDER BY ts_rank_cd(fts, plainto_tsquery('simple', ${p.querySeg})) DESC
         LIMIT ${p.k}
@@ -62,7 +64,7 @@ export async function retrieve(mode: Retriever, p: RetrieveParams): Promise<stri
         SELECT id, ROW_NUMBER() OVER (ORDER BY embedding <=> ${vec}::halfvec) AS rank
         FROM rag_chunk
         WHERE hf_id = ${p.tenant.hfId} AND company_id = ${p.tenant.companyId}
-          AND collection IN (${cols}) AND review <> 'rejected' AND embedding IS NOT NULL
+          ${cols} AND review <> 'rejected' AND embedding IS NOT NULL
         ORDER BY embedding <=> ${vec}::halfvec LIMIT ${cand}
       ),
       lexical AS (
@@ -70,7 +72,7 @@ export async function retrieve(mode: Retriever, p: RetrieveParams): Promise<stri
                  ORDER BY ts_rank_cd(fts, plainto_tsquery('simple', ${p.querySeg})) DESC) AS rank
         FROM rag_chunk
         WHERE hf_id = ${p.tenant.hfId} AND company_id = ${p.tenant.companyId}
-          AND collection IN (${cols}) AND review <> 'rejected'
+          ${cols} AND review <> 'rejected'
           AND fts @@ plainto_tsquery('simple', ${p.querySeg})
         LIMIT ${cand}
       ),

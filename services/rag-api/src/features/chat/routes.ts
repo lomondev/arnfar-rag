@@ -3,6 +3,8 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { Elysia, t } from "elysia";
 
 import { db } from "../../lib/db.ts";
+import { env } from "../../lib/env.ts";
+import { listGenModels } from "../../lib/ollama.ts";
 import { devTenant } from "../../lib/tenant.ts";
 import {
   createConversation,
@@ -11,7 +13,7 @@ import {
   listConversations,
   renameConversation,
 } from "./conversation.ts";
-import { createQa } from "../qa/service.ts";
+import { createQa, verifyQa } from "../qa/service.ts";
 import { chatStream } from "./service.ts";
 
 export const chatRoutes = new Elysia({ prefix: "/chat" })
@@ -76,6 +78,15 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
     },
   )
 
+  // ── Installed generator models (for the /chat model picker) ───────────────
+  // Only rag-api may touch Ollama (CLAUDE.md), so the web app fetches the model list
+  // through here rather than hitting Ollama's /api/tags directly.
+  .get("/models", async () => {
+    const installed = await listGenModels().catch(() => [] as string[]);
+    const models = installed.includes(env.genModel) ? installed : [env.genModel, ...installed];
+    return { default: env.genModel, models };
+  })
+
   // ── Multi-turn streaming chat ──────────────────────────────────────────────
   .post(
     "/stream",
@@ -87,6 +98,7 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
         signal: request.signal, // aborting the HTTP request cancels Ollama
         ...(body.conversationId ? { conversationId: body.conversationId } : {}),
         ...(body.collections ? { collections: body.collections } : {}),
+        ...(body.kinds ? { kinds: body.kinds } : {}),
         ...(body.k ? { k: body.k } : {}),
         ...(body.model ? { model: body.model } : {}),
       });
@@ -119,23 +131,29 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
         message: t.String({ minLength: 1 }),
         conversationId: t.Optional(t.String()),
         collections: t.Optional(t.Array(t.String())),
+        kinds: t.Optional(t.Array(t.String())),
         k: t.Optional(t.Number({ minimum: 1, maximum: 20 })),
         model: t.Optional(t.String()),
       }),
     },
   )
   // Promote a good chat answer into the dataset (source=chat_promoted, verified=false).
+  // Teach mode passes verify=true: the curator IS the reviewer, so their approval marks
+  // the pair verified on the spot (reviewer recorded in verified_by) — no second queue.
   .post(
     "/promote",
     async ({ body, set }) => {
       try {
-        return await createQa(devTenant(), {
+        const tenant = devTenant();
+        const created = await createQa(tenant, {
           questionLo: body.question,
           answerLo: body.answer,
           citationIds: body.citationIds,
           source: "chat_promoted",
           ...(body.tags ? { tags: body.tags } : {}),
         });
+        if (body.verify) await verifyQa(tenant, created.id, body.reviewer ?? "teach");
+        return { ...created, verified: body.verify === true };
       } catch (err) {
         set.status = 422;
         return { error: err instanceof Error ? err.message : String(err) };
@@ -147,6 +165,8 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
         answer: t.String({ minLength: 1 }),
         citationIds: t.Array(t.String(), { minItems: 1 }),
         tags: t.Optional(t.Array(t.String())),
+        verify: t.Optional(t.Boolean()),
+        reviewer: t.Optional(t.String({ minLength: 1, maxLength: 100 })),
       }),
     },
   )

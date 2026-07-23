@@ -1,30 +1,57 @@
+"use client";
+
 /**
- * A small Markdown renderer for assistant answers, with `[n]` citation markers rendered as
- * clickable chips.
+ * A dependency-free Markdown renderer for assistant answers, with `[n]` citation markers
+ * rendered as clickable chips.
  *
  * Deliberately not `react-markdown`: citations have to survive *inside* inline text
  * (bold, list items, table cells), which means the citation pass and the inline pass must
  * be the same pass. Bolting a custom text renderer onto a general Markdown AST to achieve
- * that costs more code than the subset the generator actually emits — headings, lists,
- * fenced code, pipe tables, bold/italic/code, and paragraphs. It also keeps the offline
- * dependency surface at zero.
+ * that costs more code than the subset the generator actually emits — headings, lists
+ * (nested + task), fenced code, pipe tables, blockquotes, horizontal rules, links,
+ * bold/italic/strike/code, and paragraphs. It also keeps the offline dependency surface
+ * at zero.
  *
  * Anything unrecognised falls through as literal text, never as an exception.
  */
 
-import type { JSX, ReactNode } from "react";
+import { useState, type JSX, type ReactNode } from "react";
+import { Check, Copy } from "lucide-react";
 
 export type CiteHandler = (n: number) => void;
 
-/** `code` | **bold** | *italic* | [n] — one alternation so a citation inside bold still resolves. */
-const INLINE = /(`[^`\n]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[\d+\])/g;
+/**
+ * One alternation, longest/most-specific first, so a citation inside bold still resolves and
+ * a `[label](url)` link is never mistaken for a `[n]` citation.
+ * `code` | `[text](url)` | **bold** | ~~strike~~ | *italic* | _italic_ | [n]
+ */
+const INLINE =
+  /(`[^`\n]+`|\[[^\]\n]+\]\([^)\s]+\)|\*\*[^*\n]+\*\*|~~[^~\n]+~~|\*[^*\n]+\*|_[^_\n]+_|\[\d+\])/g;
+
+const LINK = /^\[([^\]\n]+)\]\(([^)\s]+)\)$/;
+const CITE = /^\[(\d+)\]$/;
 
 function renderInline(text: string, onCite: CiteHandler, keyPrefix: string): ReactNode[] {
   return text.split(INLINE).map((part, i) => {
     const key = `${keyPrefix}-${i}`;
     if (part === "") return null;
 
-    const cite = /^\[(\d+)\]$/.exec(part);
+    const link = LINK.exec(part);
+    if (link) {
+      return (
+        <a
+          key={key}
+          href={link[2]}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
+        >
+          {link[1]}
+        </a>
+      );
+    }
+
+    const cite = CITE.exec(part);
     if (cite) {
       const n = Number(cite[1]);
       return (
@@ -53,7 +80,21 @@ function renderInline(text: string, onCite: CiteHandler, keyPrefix: string): Rea
         </strong>
       );
     }
-    if (part.startsWith("*") && part.endsWith("*")) {
+    if (part.startsWith("~~") && part.endsWith("~~")) {
+      return (
+        <del key={key} className="text-muted-foreground">
+          {part.slice(2, -2)}
+        </del>
+      );
+    }
+    if (part.startsWith("**") === false && part.startsWith("*") && part.endsWith("*")) {
+      return (
+        <em key={key} className="italic">
+          {part.slice(1, -1)}
+        </em>
+      );
+    }
+    if (part.startsWith("_") && part.endsWith("_")) {
       return (
         <em key={key} className="italic">
           {part.slice(1, -1)}
@@ -62,6 +103,35 @@ function renderInline(text: string, onCite: CiteHandler, keyPrefix: string): Rea
     }
     return <span key={key}>{part}</span>;
   });
+}
+
+/** A fenced code block with a language label and a copy button — Claude-style. */
+function CodeBlock({ code, lang }: { code: string; lang: string }): JSX.Element {
+  const [copied, setCopied] = useState(false);
+  const copy = async (): Promise<void> => {
+    await navigator.clipboard.writeText(code);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div className="my-3 overflow-hidden rounded-lg border border-border bg-muted/40">
+      <div className="flex items-center justify-between border-b border-border bg-muted/60 px-3 py-1.5">
+        <span className="font-mono text-[0.72rem] text-muted-foreground">{lang || "text"}</span>
+        <button
+          type="button"
+          onClick={() => void copy()}
+          title="Copy code"
+          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.72rem] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <pre className="overflow-x-auto p-3 text-[0.85em] leading-relaxed">
+        <code className="font-mono">{code}</code>
+      </pre>
+    </div>
+  );
 }
 
 /** `| a | b |` — a table row. Cells are trimmed; the leading/trailing pipes are optional. */
@@ -75,6 +145,73 @@ function tableCells(line: string): string[] {
 
 const isTableRow = (l: string): boolean => /\|/.test(l) && l.trim().startsWith("|");
 const isTableDivider = (l: string): boolean => /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(l) && l.includes("-");
+const isHr = (l: string): boolean => /^\s*([-*_])(\s*\1){2,}\s*$/.test(l) && !l.includes("|");
+
+const LIST_ITEM = /^(\s*)([-*•]|\d+[.)])\s+(.*)$/;
+
+interface ListNode {
+  ordered: boolean;
+  content: string;
+  checked: boolean | null;
+  children: ListNode[];
+}
+
+/** Build a nesting tree from flat list items, keyed off leading indentation. */
+function buildLevel(
+  items: readonly { indent: number; ordered: boolean; content: string; checked: boolean | null }[],
+  pos: { i: number },
+  indent: number,
+): ListNode[] {
+  const nodes: ListNode[] = [];
+  while (pos.i < items.length && items[pos.i]!.indent >= indent) {
+    const it = items[pos.i]!;
+    if (it.indent > indent) {
+      // Orphan deeper item with no parent at this level — attach to the previous sibling.
+      const deeper = buildLevel(items, pos, it.indent);
+      if (nodes.length > 0) nodes[nodes.length - 1]!.children.push(...deeper);
+      continue;
+    }
+    const node: ListNode = { ordered: it.ordered, content: it.content, checked: it.checked, children: [] };
+    pos.i++;
+    if (pos.i < items.length && items[pos.i]!.indent > indent) {
+      node.children = buildLevel(items, pos, items[pos.i]!.indent);
+    }
+    nodes.push(node);
+  }
+  return nodes;
+}
+
+function renderNodes(nodes: readonly ListNode[], onCite: CiteHandler, keyBase: string): JSX.Element {
+  const ordered = nodes[0]?.ordered ?? false;
+  const ListTag = ordered ? "ol" : "ul";
+  return (
+    <ListTag
+      className={`my-3 space-y-1.5 ps-5 ${ordered ? "list-decimal" : "list-disc"} marker:text-muted-foreground`}
+    >
+      {nodes.map((node, n) => {
+        const key = `${keyBase}-${n}`;
+        return (
+          <li
+            key={key}
+            lang="lo"
+            className={node.checked !== null ? "-ms-5 list-none ps-0" : "leading-[1.75] ps-1"}
+          >
+            {node.checked !== null && (
+              <input
+                type="checkbox"
+                checked={node.checked}
+                readOnly
+                className="me-2 translate-y-[0.1em] accent-primary"
+              />
+            )}
+            {renderInline(node.content, onCite, key)}
+            {node.children.length > 0 && renderNodes(node.children, onCite, key)}
+          </li>
+        );
+      })}
+    </ListTag>
+  );
+}
 
 export function renderMarkdown(text: string, onCite: CiteHandler): ReactNode {
   const lines = text.split("\n");
@@ -87,6 +224,7 @@ export function renderMarkdown(text: string, onCite: CiteHandler): ReactNode {
 
     // Fenced code — consumed verbatim, so Lao inside a fence is never re-parsed.
     if (line.trimStart().startsWith("```")) {
+      const lang = line.trimStart().slice(3).trim();
       const body: string[] = [];
       i++;
       while (i < lines.length && !(lines[i] ?? "").trimStart().startsWith("```")) {
@@ -94,14 +232,7 @@ export function renderMarkdown(text: string, onCite: CiteHandler): ReactNode {
         i++;
       }
       i++; // closing fence
-      blocks.push(
-        <pre
-          key={key}
-          className="my-3 overflow-x-auto rounded-lg border border-border bg-muted/60 p-3 text-[0.85em] leading-relaxed"
-        >
-          <code className="font-mono">{body.join("\n")}</code>
-        </pre>,
-      );
+      blocks.push(<CodeBlock key={key} code={body.join("\n")} lang={lang} />);
       continue;
     }
 
@@ -110,15 +241,30 @@ export function renderMarkdown(text: string, onCite: CiteHandler): ReactNode {
       continue;
     }
 
-    const heading = /^(#{1,4})\s+(.*)$/.exec(line);
+    // Horizontal rule — checked before lists so `---` isn't read as a bullet.
+    if (isHr(line)) {
+      blocks.push(<hr key={key} className="my-5 border-border" />);
+      i++;
+      continue;
+    }
+
+    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
     if (heading) {
-      const level = (heading[1] ?? "#").length;
+      const level = Math.min((heading[1] ?? "#").length, 6);
       const content = renderInline(heading[2] ?? "", onCite, key);
-      const size = level === 1 ? "text-lg" : level === 2 ? "text-base" : "text-[0.95rem]";
+      const HeadingTag = `h${level}` as keyof JSX.IntrinsicElements;
+      const size =
+        level === 1
+          ? "text-xl"
+          : level === 2
+            ? "text-lg"
+            : level === 3
+              ? "text-base"
+              : "text-[0.95rem]";
       blocks.push(
-        <p key={key} lang="lo" className={`mt-4 mb-2 font-semibold first:mt-0 ${size}`} role="heading" aria-level={level}>
+        <HeadingTag key={key} lang="lo" className={`mt-5 mb-2 font-semibold first:mt-0 ${size}`}>
           {content}
-        </p>,
+        </HeadingTag>,
       );
       i++;
       continue;
@@ -126,8 +272,22 @@ export function renderMarkdown(text: string, onCite: CiteHandler): ReactNode {
 
     // Pipe table. Accounting answers lean on these (account rows, rate schedules), and a
     // table flattened into prose is unreadable — so it gets real <table> semantics.
-    if (isTableRow(line) && isTableDivider(lines[i + 1] ?? "")) {
-      const header = tableCells(line);
+    // The generator sometimes prefixes the header line with inline text — typically a
+    // citation, `[2] | ລຳດັບ | … |` — so accept any line whose pipe-part is followed by a
+    // divider, and render the prefix as its own inline paragraph above the table.
+    const headerPipeAt = isTableDivider(lines[i + 1] ?? "") && line.trimEnd().endsWith("|")
+      ? line.indexOf("|")
+      : -1;
+    if (headerPipeAt >= 0 && line.slice(headerPipeAt).split("|").length > 2) {
+      const prefix = line.slice(0, headerPipeAt).trim();
+      if (prefix) {
+        blocks.push(
+          <p key={`${key}-pre`} lang="lo" className="my-2 leading-[1.8]">
+            {renderInline(prefix, onCite, `${key}-pre`)}
+          </p>,
+        );
+      }
+      const header = tableCells(line.slice(headerPipeAt));
       i += 2;
       const rows: string[][] = [];
       while (i < lines.length && isTableRow(lines[i] ?? "")) {
@@ -163,43 +323,40 @@ export function renderMarkdown(text: string, onCite: CiteHandler): ReactNode {
       continue;
     }
 
-    // Lists — a run of consecutive bullets or numbers.
-    const bullet = /^\s*[-*•]\s+(.*)$/.exec(line);
-    const numbered = /^\s*\d+[.)]\s+(.*)$/.exec(line);
-    if (bullet || numbered) {
-      const ordered = numbered !== null;
-      const items: string[] = [];
+    // Lists — a run of consecutive items at any indentation, nested by leading whitespace.
+    if (LIST_ITEM.test(line)) {
+      const items: { indent: number; ordered: boolean; content: string; checked: boolean | null }[] = [];
       while (i < lines.length) {
-        const l = lines[i] ?? "";
-        const m = ordered ? /^\s*\d+[.)]\s+(.*)$/.exec(l) : /^\s*[-*•]\s+(.*)$/.exec(l);
+        const m = LIST_ITEM.exec(lines[i] ?? "");
         if (!m) break;
-        items.push(m[1] ?? "");
+        const indent = (m[1] ?? "").replace(/\t/g, "  ").length;
+        const ordered = /\d/.test(m[2] ?? "");
+        let content = m[3] ?? "";
+        const task = /^\[([ xX])\]\s+(.*)$/.exec(content);
+        const checked = task ? (task[1] ?? " ") !== " " : null;
+        if (task) content = task[2] ?? "";
+        items.push({ indent, ordered, content, checked });
         i++;
       }
-      const ListTag = ordered ? "ol" : "ul";
-      blocks.push(
-        <ListTag
-          key={key}
-          className={`my-3 space-y-1.5 ps-5 ${ordered ? "list-decimal" : "list-disc"} marker:text-muted-foreground`}
-        >
-          {items.map((item, n) => (
-            <li key={n} lang="lo" className="leading-[1.75] ps-1">
-              {renderInline(item, onCite, `${key}-${n}`)}
-            </li>
-          ))}
-        </ListTag>,
-      );
+      const nodes = buildLevel(items, { i: 0 }, items[0]?.indent ?? 0);
+      blocks.push(<div key={key}>{renderNodes(nodes, onCite, key)}</div>);
       continue;
     }
 
     const quote = /^>\s?(.*)$/.exec(line);
     if (quote) {
+      const quoted: string[] = [];
+      while (i < lines.length) {
+        const m = /^>\s?(.*)$/.exec(lines[i] ?? "");
+        if (!m) break;
+        quoted.push(m[1] ?? "");
+        i++;
+      }
       blocks.push(
         <blockquote key={key} lang="lo" className="my-3 border-s-2 border-border ps-4 text-muted-foreground italic">
-          {renderInline(quote[1] ?? "", onCite, key)}
+          {renderInline(quoted.join("\n"), onCite, key)}
         </blockquote>,
       );
-      i++;
       continue;
     }
 
@@ -209,16 +366,24 @@ export function renderMarkdown(text: string, onCite: CiteHandler): ReactNode {
       const l = lines[i] ?? "";
       if (
         l.trim() === "" ||
-        /^(#{1,4})\s/.test(l) ||
-        /^\s*[-*•]\s/.test(l) ||
-        /^\s*\d+[.)]\s/.test(l) ||
+        /^(#{1,6})\s/.test(l) ||
+        LIST_ITEM.test(l) ||
         /^>\s?/.test(l) ||
+        isHr(l) ||
         l.trimStart().startsWith("```") ||
         isTableRow(l)
       ) {
         break;
       }
       para.push(l);
+      i++;
+    }
+    // GUARANTEED PROGRESS: a table row whose divider line hasn't streamed in yet matches
+    // no block branch above AND breaks this loop with `i` unmoved — without consuming it
+    // the outer while spins forever and the tab hard-freezes mid-stream. Render the
+    // orphan line as plain text; the next flush re-parses it into a real table.
+    if (para.length === 0) {
+      para.push(lines[i] ?? "");
       i++;
     }
     blocks.push(

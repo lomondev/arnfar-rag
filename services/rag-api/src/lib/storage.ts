@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 
 import { env } from "./env.ts";
+import { repoRoot } from "./paths.ts";
 
 /** Object storage — filesystem driver (CLAUDE.md decision D). Originals are keyed
  *  by content sha256 so identical bytes dedupe to one object. Swap this module for
@@ -24,7 +25,12 @@ export function originalKey(
 }
 
 function abs(key: string): string {
-  const root = resolve(env.storageRoot);
+  // A relative STORAGE_FS_ROOT ("./storage") anchors on the repo root, not process.cwd()
+  // — dev.sh launches rag-api with cwd=services/rag-api, which would scatter originals
+  // into services/rag-api/storage/ (same bug class as the dataset-export path).
+  const root = isAbsolute(env.storageRoot)
+    ? resolve(env.storageRoot)
+    : resolve(repoRoot(), env.storageRoot);
   const path = resolve(root, key);
   if (!path.startsWith(root)) throw new Error("storage key escapes root");
   return path;

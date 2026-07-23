@@ -20,7 +20,8 @@ export interface EvalConfig {
   adversarial: string[]; // Lao questions whose answer is NOT in the corpus
 }
 
-const ALL_COLLECTIONS = ["lao-accounting-law", "coa", "tax", "sop", "lao-style"];
+// Collections are user-creatable; an empty list now means "whole tenant corpus"
+// down in the retrievers rather than a fixed allowlist.
 const TOP_K = 10;
 const CONTEXT_K = 5;
 
@@ -34,7 +35,7 @@ async function chunkContents(ids: string[]): Promise<Map<string, string>> {
 }
 
 export async function runEval(tenant: TenantContext, cfg: EvalConfig) {
-  const collections = cfg.collections.length ? cfg.collections : ALL_COLLECTIONS;
+  const collections = cfg.collections;
 
   // Eval set = verified QA pairs; gold = their citations.
   const pairs = await db()

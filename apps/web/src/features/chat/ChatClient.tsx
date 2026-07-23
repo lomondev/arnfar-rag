@@ -1,15 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUp,
+  BookOpen,
   Check,
   Copy,
   Flag,
+  Loader2,
   Moon,
   PanelLeft,
+  PenLine,
   Plus,
   Quote,
+  Search,
   Square,
   Sun,
   Trash2,
@@ -38,9 +42,10 @@ import {
   type ConversationSummary,
 } from "./chatApi";
 
-const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
+import { useKnowledgeKinds } from "@/features/studio/useCollections";
+import { shortModel, useModels } from "./useModels";
 
-const COLLECTIONS = ["lao-accounting-law", "coa", "tax", "sop", "lao-style"] as const;
+const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
 
 /**
  * Chrome only. The language toggle never touches message content — Lao answers stay Lao
@@ -62,6 +67,9 @@ const UI = {
     sources: "ແຫຼ່ງອ້າງອີງ",
     empty: "ຍັງບໍ່ມີການສົນທະນາ",
     hint: "Enter ສົ່ງ · Shift+Enter ຂຶ້ນແຖວໃໝ່",
+    phaseSearch: "ກຳລັງຄົ້ນຫາແຫຼ່ງອ້າງອີງ",
+    phaseRead: "ອ່ານແຫຼ່ງອ້າງອີງ",
+    phaseWrite: "ກຳລັງຮ່າງຄຳຕອບ",
   },
   en: {
     placeholder: "Ask an accounting question…",
@@ -78,11 +86,18 @@ const UI = {
     sources: "Sources",
     empty: "No conversations yet",
     hint: "Enter to send · Shift+Enter for a new line",
+    phaseSearch: "Searching sources",
+    phaseRead: "Reading sources",
+    phaseWrite: "Composing answer",
   },
 } as const;
 
 type Lang = keyof typeof UI;
 type Theme = "light" | "dark";
+
+/** The visible stages of a streamed answer, in order. Driven by the SSE event sequence. */
+type StreamPhase = "searching" | "reading" | "writing";
+const PHASE_ORDER: readonly StreamPhase[] = ["searching", "reading", "writing"];
 
 /** One SSE frame from `POST /chat/stream`. */
 interface StreamEvent {
@@ -93,7 +108,30 @@ interface StreamEvent {
   readonly conversationId?: string;
 }
 
+/** How often buffered stream tokens are flushed into React state. SEA-LION emits
+ *  CHARACTER-level tokens for Lao; a setState per character re-renders the whole
+ *  thread hundreds of times per answer and the UI freezes on long tables. ~12 fps
+ *  still reads as live typing. */
+const STREAM_FLUSH_MS = 80;
+
+/** Markdown body of one message, memoized so completed messages skip re-parsing
+ *  while a later answer streams — only the in-flight message re-renders per flush.
+ *  `onOpenSource` must be referentially stable (a useState setter is). */
+const MessageBody = memo(function MessageBody({
+  content,
+  sources,
+  onOpenSource,
+}: {
+  content: string;
+  sources?: readonly StoredSource[];
+  onOpenSource: (s: StoredSource | null) => void;
+}) {
+  return <>{renderMarkdown(content, (n) => onOpenSource(sources?.[n - 1] ?? null))}</>;
+});
+
 export function ChatClient() {
+  const KINDS = useKnowledgeKinds();
+  const MODELS = useModels();
   // Sidebar list — summaries only (no messages) so the list stays cheap.
   const [summaries, setSummaries] = useState<readonly ConversationSummary[]>([]);
   // Full message thread for the active conversation (loaded on open).
@@ -103,36 +141,67 @@ export function ChatClient() {
 
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  // Progress for the in-flight answer: which stage, and how many sources were retrieved.
+  const [phase, setPhase] = useState<StreamPhase | null>(null);
+  const [phaseSources, setPhaseSources] = useState(0);
   const [lang, setLang] = useState<Lang>("lo");
   const [theme, setTheme] = useState<Theme>("light");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [panel, setPanel] = useState<StoredSource | null>(null);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
   const [k, setK] = useState(8);
-  const [collection, setCollection] = useState("");
+  // Retrieval scope: "" = all knowledge, "kind:KEY" = one knowledge kind's entries.
+  // Users think in their /studio/knowledge categories — raw collections are not exposed.
+  const [scope, setScope] = useState("");
+  const [model, setModel] = useState("");
 
   const abortRef = useRef<AbortController | null>(null);
+  // Which conversation an answer is currently streaming into — guards the thread-load
+  // effect against clobbering the optimistic draft (see the effect below).
+  const streamingRef = useRef(false);
+  const streamConvIdRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   const t = UI[lang];
   const messages = activeThread?.messages ?? [];
+  const modelLabel = shortModel(model || MODELS.default || "SEA-LION");
 
   // Load the conversation list from the server after mount (avoid hydration mismatch).
   useEffect(() => {
     void listConversations().then(setSummaries).catch(() => setSummaries([]));
     const storedLang = localStorage.getItem("arnfar.chat.lang");
     if (storedLang === "lo" || storedLang === "en") setLang(storedLang);
+    const storedModel = localStorage.getItem("arnfar.chat.model");
+    if (storedModel) setModel(storedModel);
     setTheme(document.documentElement.classList.contains("dark") ? "dark" : "light");
     setHydrated(true);
   }, []);
 
+  // Default the picker to the server's configured generator once the list loads, unless the
+  // user already has a stored choice. Falls back cleanly if that model was later removed.
+  useEffect(() => {
+    if (MODELS.models.length === 0) return;
+    setModel((cur) => (cur && MODELS.models.includes(cur) ? cur : MODELS.default));
+  }, [MODELS]);
+
+  useEffect(() => {
+    if (hydrated && model) localStorage.setItem("arnfar.chat.model", model);
+  }, [model, hydrated]);
+
   // When the active conversation changes, load its full message thread.
+  //
+  // EXCEPT while an answer is streaming into that very conversation: the server's
+  // `created` frame sets activeId, and refetching here would replace the optimistic
+  // thread with the server copy — which does not contain the assistant draft yet.
+  // That deleted the streaming message, every token patched a dead index, and answers
+  // looked stuck until the user clicked away and back.
   useEffect(() => {
     if (!activeId) {
       setActiveThread(null);
       return;
     }
+    if (streamingRef.current && activeId === streamConvIdRef.current) return;
     let cancelled = false;
     void getConversation(activeId)
       .then((conv) => {
@@ -217,8 +286,27 @@ export function ChatClient() {
     }
 
     setStreaming(true);
+    setPhase("searching");
+    setPhaseSources(0);
     const ctrl = new AbortController();
     abortRef.current = ctrl;
+    streamingRef.current = true;
+    streamConvIdRef.current = existingConvId;
+
+    // Token batching: accumulate streamed characters here and flush on a short timer.
+    // One setState per flush instead of per character keeps long tables smooth.
+    let pending = "";
+    let flushTimer: number | null = null;
+    const flushPending = () => {
+      if (flushTimer !== null) {
+        window.clearTimeout(flushTimer);
+        flushTimer = null;
+      }
+      if (!pending) return;
+      const chunk = pending;
+      pending = "";
+      patchMessage(assistantIdx, (m) => ({ ...m, content: m.content + chunk }));
+    };
 
     try {
       const res = await fetch(`${BASE}/chat/stream`, {
@@ -230,7 +318,8 @@ export function ChatClient() {
           message: q,
           k,
           ...(existingConvId ? { conversationId: existingConvId } : {}),
-          ...(collection ? { collections: [collection] } : {}),
+          ...(scope.startsWith("kind:") ? { kinds: [scope.slice(5)] } : {}),
+          ...(model ? { model } : {}),
         }),
         signal: ctrl.signal,
       });
@@ -258,14 +347,25 @@ export function ChatClient() {
             // Reconcile: the server assigned the real conversation id. Wire it into state
             // and refresh the sidebar so the new thread appears.
             serverConvId = ev.conversationId;
+            streamConvIdRef.current = serverConvId;
             setActiveThread((cur) => (cur && cur.id === "pending" ? { ...cur, id: serverConvId! } : cur));
             setActiveId(serverConvId);
             void listConversations().then(setSummaries).catch(() => {});
           } else if (ev.type === "citations") {
             patchMessage(assistantIdx, (m) => ({ ...m, sources: ev.sources ?? [] }));
+            setPhaseSources(ev.sources?.length ?? 0);
+            setPhase("reading");
           } else if (ev.type === "token") {
-            patchMessage(assistantIdx, (m) => ({ ...m, content: m.content + (ev.t ?? "") }));
+            setPhase((cur) => (cur === "writing" ? cur : "writing"));
+            pending += ev.t ?? "";
+            if (flushTimer === null) {
+              flushTimer = window.setTimeout(() => {
+                flushTimer = null;
+                flushPending();
+              }, STREAM_FLUSH_MS);
+            }
           } else if (ev.type === "error") {
+            flushPending(); // keep token order ahead of the error note
             patchMessage(assistantIdx, (m) => ({
               ...m,
               content: `${m.content}\n\n_[error: ${ev.error ?? "unknown"}]_`,
@@ -277,13 +377,18 @@ export function ChatClient() {
       if (serverConvId) void listConversations().then(setSummaries).catch(() => {});
     } catch (e) {
       if ((e as Error).name !== "AbortError") {
+        flushPending();
         patchMessage(assistantIdx, (m) => ({
           ...m,
           content: `${m.content}\n\n_[error: ${(e as Error).message}]_`,
         }));
       }
     } finally {
+      flushPending(); // whatever arrived since the last timer tick
+      streamingRef.current = false;
+      streamConvIdRef.current = null;
       setStreaming(false);
+      setPhase(null);
       abortRef.current = null;
     }
   }
@@ -463,7 +568,7 @@ export function ChatClient() {
           )}
           <span className="text-sm font-medium">Arnfar Chat</span>
           <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-[0.7rem]">
-            SEA-LION · {t.subtitle}
+            {modelLabel} · {t.subtitle}
           </span>
         </header>
 
@@ -477,7 +582,7 @@ export function ChatClient() {
                 <p lang="lo" className="text-xl font-semibold">
                   {t.greeting}
                 </p>
-                <p className="text-muted-foreground mt-1.5 text-sm">SEA-LION · {t.subtitle}</p>
+                <p className="text-muted-foreground mt-1.5 text-sm">{modelLabel} · {t.subtitle}</p>
               </div>
             ) : (
               messages.map((msg, i) =>
@@ -494,7 +599,9 @@ export function ChatClient() {
                   <div key={i} className="mb-8">
                     <div className="text-[1.02rem]">
                       {msg.content ? (
-                        renderMarkdown(msg.content, (n) => setPanel(msg.sources?.[n - 1] ?? null))
+                        <MessageBody content={msg.content} sources={msg.sources} onOpenSource={setPanel} />
+                      ) : streaming && i === messages.length - 1 ? (
+                        <StreamProgress phase={phase ?? "searching"} sources={phaseSources} labels={t} />
                       ) : (
                         <span className="inline-flex gap-1 py-2">
                           <Dot delay="0ms" />
@@ -601,17 +708,39 @@ export function ChatClient() {
                 />
               </label>
               <Select
-                value={collection}
-                onChange={(e) => setCollection(e.target.value)}
+                value={scope}
+                onChange={(e) => setScope(e.target.value)}
                 className="h-7"
+                title="ຂອບເຂດຄວາມຮູ້ · knowledge scope"
               >
-                <option value="">all collections</option>
-                {COLLECTIONS.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
+                <option value="">ຄວາມຮູ້ທັງໝົດ · all knowledge</option>
+                {KINDS.length > 0 && (
+                  <optgroup label="ປະເພດຄວາມຮູ້ · knowledge">
+                    {KINDS.map((kd) => (
+                      <option key={kd.key} value={`kind:${kd.key}`}>
+                        {kd.nameLo}
+                        {kd.nameEn ? ` · ${kd.nameEn}` : ""}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </Select>
+
+              {MODELS.models.length > 1 && (
+                <Select
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  className="h-7"
+                  title="ໂມເດວ · model"
+                >
+                  {MODELS.models.map((m) => (
+                    <option key={m} value={m}>
+                      {shortModel(m)}
+                      {m === MODELS.default ? " ★" : ""}
+                    </option>
+                  ))}
+                </Select>
+              )}
 
               <span className="ms-auto hidden sm:inline">{t.hint}</span>
 
@@ -694,5 +823,72 @@ function Dot({ delay }: { delay: string }) {
       className="bg-muted-foreground size-1.5 animate-bounce rounded-full"
       style={{ animationDelay: delay }}
     />
+  );
+}
+
+/**
+ * A modern, phased progress indicator for a streaming answer. Mirrors the pipeline the
+ * server actually runs — retrieve → read → generate — so the reader sees *what* is taking
+ * time, not just *that* it is. Completed steps check off; the active step spins and shimmers.
+ */
+function StreamProgress({
+  phase,
+  sources,
+  labels,
+}: {
+  phase: StreamPhase;
+  sources: number;
+  labels: (typeof UI)[Lang];
+}) {
+  const active = PHASE_ORDER.indexOf(phase);
+  const text: Record<StreamPhase, string> = {
+    searching: labels.phaseSearch,
+    reading: sources > 0 ? `${labels.phaseRead} · ${sources}` : labels.phaseRead,
+    writing: labels.phaseWrite,
+  };
+  const Icon: Record<StreamPhase, typeof Search> = {
+    searching: Search,
+    reading: BookOpen,
+    writing: PenLine,
+  };
+  return (
+    <div className="flex flex-col gap-2 py-1.5">
+      {PHASE_ORDER.map((p, idx) => {
+        const state = idx < active ? "done" : idx === active ? "active" : "pending";
+        const StepIcon = Icon[p];
+        return (
+          <div
+            key={p}
+            className={cn(
+              "flex items-center gap-2.5 text-sm transition-colors duration-300",
+              state === "active"
+                ? "text-foreground"
+                : state === "done"
+                  ? "text-muted-foreground"
+                  : "text-muted-foreground/40",
+            )}
+          >
+            <span className="flex size-5 shrink-0 items-center justify-center">
+              {state === "active" ? (
+                <Loader2 className="text-primary size-4 animate-spin" />
+              ) : state === "done" ? (
+                <Check className="text-primary size-4" />
+              ) : (
+                <StepIcon className="size-4" />
+              )}
+            </span>
+            <span
+              lang="lo"
+              className={cn(
+                state === "active" &&
+                  "from-foreground via-muted-foreground to-foreground animate-shimmer bg-gradient-to-r bg-[length:200%_100%] bg-clip-text text-transparent",
+              )}
+            >
+              {text[p]}
+            </span>
+          </div>
+        );
+      })}
+    </div>
   );
 }

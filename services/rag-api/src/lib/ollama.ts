@@ -89,6 +89,25 @@ interface GenerateResponse {
   response?: string;
 }
 
+interface TagsResponse {
+  models?: { name?: string; model?: string }[];
+}
+
+/** Installed Ollama models that can generate text. The embed model (bge-m3) is excluded —
+ *  it emits vectors, not text — so this can safely populate the /chat model picker.
+ *  Returns [] if Ollama is unreachable; the caller falls back to the configured default. */
+export async function listGenModels(): Promise<string[]> {
+  const res = await fetch(`${env.ollamaBaseUrl}/api/tags`);
+  if (!res.ok) throw new Error(`ollama /api/tags → ${res.status}`);
+  const data = (await res.json()) as TagsResponse;
+  const embedBase = env.embedModel.split(":")[0];
+  return (data.models ?? [])
+    .map((m) => m.name ?? m.model ?? "")
+    .filter((n): n is string => n.length > 0)
+    .filter((n) => (n.split(":")[0] ?? n) !== embedBase)
+    .sort();
+}
+
 export interface GenerateOptions {
   system?: string;
   temperature?: number;

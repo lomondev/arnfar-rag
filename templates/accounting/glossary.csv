@@ -1,0 +1,15 @@
+term_lo,term_en,definition_lo,definition_en,variants_lo,forbidden_lo
+ລູກໜີ້ການຄ້າ,Trade receivables,ຈຳນວນເງິນທີ່ລູກຄ້າຍັງຄ້າງຊຳລະຈາກການຂາຍເຊື່ອ,Amounts owed by customers from credit sales,ລູກຫນີ້|ລູກໜີ້,
+ເຈົ້າໜີ້ການຄ້າ,Trade payables,ຈຳນວນເງິນທີ່ຕ້ອງຈ່າຍໃຫ້ຜູ້ສະໜອງຈາກການຊື້ເຊື່ອ,Amounts owed to suppliers from credit purchases,ເຈົ້າຫນີ້,
+ໃບເກັບເງິນ,Invoice,ເອກະສານຮຽກເກັບເງິນຈາກລູກຄ້າ,Document requesting payment from a customer,ໃບແຈ້ງໜີ້,ໃບບິນ
+ບັນຊີແຍກປະເພດ,General ledger,ບັນຊີລວມທີ່ບັນທຶກທຸກລາຍການຕາມເລກບັນຊີ,The master account holding all posted transactions,,
+ໃບຢັ້ງຢືນການບັນທຶກ,Journal voucher,ເອກະສານທີ່ໃຊ້ບັນທຶກລາຍການເຂົ້າບັນຊີ,Document used to record a journal entry,ໃບສຳຄັນ,
+ຄ່າຫຼູ້ຍຫ້ຽນ,Depreciation,ການປັນສ່ວນຕົ້ນທຶນຊັບສິນຄົງທີ່ຕາມອາຍຸການໃຊ້ງານ,Allocation of a fixed asset's cost over its useful life,,
+ອາກອນມູນຄ່າເພີ່ມ,Value-added tax (VAT),ອາກອນທີ່ເກັບຈາກມູນຄ່າເພີ່ມຂອງສິນຄ້າ ແລະ ບໍລິການ,Tax charged on the value added to goods and services,ອາກອນ VAT|ພາສີມູນຄ່າເພີ່ມ,ພາສີ
+ໃບດຸ່ນດ່ຽງ,Balance sheet,ບົດລາຍງານທີ່ສະແດງຊັບສິນ ໜີ້ສິນ ແລະ ທຶນ ໃນເວລາໃດໜຶ່ງ,"Statement of assets, liabilities and equity at a point in time",ໃບສະຫຼຸບຊັບສົມບັດ,
+ໃບລາຍງານຜົນໄດ້ຮັບ,Income statement,ບົດລາຍງານລາຍຮັບ ແລະ ຄ່າໃຊ້ຈ່າຍ ໃນໄລຍະໜຶ່ງ,Statement of revenue and expenses over a period,ໃບກຳໄລຂາດທຶນ,
+ກະແສເງິນສົດ,Cash flow,ການເໜັງຕີງເຂົ້າ-ອອກ ຂອງເງິນສົດ ໃນໄລຍະໜຶ່ງ,Movement of cash in and out over a period,,
+ທຶນຈົດທະບຽນ,Registered capital,ຈຳນວນທຶນທີ່ຈົດທະບຽນຕາມກົດໝາຍ,Capital registered under law,,
+ສິນຄ້າຄົງຄັງ,Inventory,ສິນຄ້າ ແລະ ວັດຖຸດິບ ທີ່ຖືໄວ້ເພື່ອຂາຍ ຫຼື ຜະລິດ,Goods and materials held for sale or production,ສິນຄ້າຄົງເຫຼືອ,
+ບົດປັບປຸງ,Adjusting entry,ລາຍການທີ່ບັນທຶກຕອນທ້າຍງວດເພື່ອໃຫ້ບັນຊີຖືກຕ້ອງ,Entry recorded at period end to state accounts correctly,,
+ຍອດຍົກມາ,Opening balance,ຍອດເຫຼືອຕົ້ນງວດ ທີ່ຍົກມາຈາກງວດກ່ອນ,Balance carried forward from the prior period,ຍອດຕົ້ນງວດ,

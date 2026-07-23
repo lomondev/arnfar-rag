@@ -9,6 +9,7 @@ import { extractDocx, normalize, segment, type ExtractBlock } from "../../lib/si
 import { originalKey, put, sha256 } from "../../lib/storage.ts";
 import { chunkBlocks, type SegBlock } from "./chunker.ts";
 import { inferAccountAttrs } from "./accounts.ts";
+import { fixLaoDefects } from "../lao/clean.ts";
 
 export interface Tenant {
   hfId: string;
@@ -36,7 +37,7 @@ export interface IngestResult {
   jobId?: string;
 }
 
-function blockText(b: ExtractBlock): string {
+export function blockText(b: ExtractBlock): string {
   if (b.type === "table") return b.markdown ?? (b.cells ?? []).map((r) => r.join(" | ")).join("\n");
   if (b.type === "account_row") {
     return `${b.code ?? ""} ${b.name_lo ?? ""}${b.name_en ? ` — ${b.name_en}` : ""}`.trim();
@@ -129,7 +130,10 @@ export async function ingestDocx(input: IngestInput): Promise<IngestResult> {
     }
     const text = blockText(b);
     if (!text.trim()) continue;
-    const s = await segment(text);
+    // Segment the CLEANED text — content_seg is the lexical index and token counts drive
+    // chunk boundaries; a doubled vowel or a space inside a syllable mis-tokenizes both.
+    // The raw `text` still flows to `content` untouched.
+    const s = await segment(fixLaoDefects(text));
     const meta: Record<string, unknown> = {};
     if (b.amounts && b.amounts.length) meta.amounts = b.amounts;
     if (b.type === "account_row") {
@@ -153,6 +157,8 @@ export async function ingestDocx(input: IngestInput): Promise<IngestResult> {
   const rows = [];
   for (const c of chunks) {
     const n = await normalize(c.content);
+    // content_norm is the dense-embedding input: lao-nlp NFC/ZWSP normalization plus the
+    // whitelisted defect fixes. `content` itself is never mutated (CLAUDE.md).
     rows.push({
       id: newId(),
       documentId,
@@ -163,7 +169,7 @@ export async function ingestDocx(input: IngestInput): Promise<IngestResult> {
       seq: c.seq,
       kind: c.kind,
       content: c.content,
-      contentNorm: n.normalized,
+      contentNorm: fixLaoDefects(n.normalized),
       contentSeg: c.contentSeg,
       headingPath: c.headingPath,
       lang: c.lang,
