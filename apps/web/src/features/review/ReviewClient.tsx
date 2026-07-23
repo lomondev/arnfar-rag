@@ -83,6 +83,13 @@ export function ReviewClient() {
     [],
   );
 
+  // One save path for the Save button AND Ctrl+Enter — they must never drift apart.
+  const saveEdit = useCallback(() => {
+    const chunk = chunks.find((c) => c.id === editing);
+    if (chunk && draft.trim()) void applyAction(chunk, "edit", draft);
+    setEditing(null);
+  }, [chunks, editing, draft, applyAction]);
+
   // Keyboard: j/k move, a accept, r reject, e edit; in edit Ctrl+Enter save, Esc cancel.
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
@@ -92,9 +99,7 @@ export function ReviewClient() {
           ev.preventDefault();
         }
         if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) {
-          const chunk = chunks.find((c) => c.id === editing);
-          if (chunk) void applyAction(chunk, "edit", draft);
-          setEditing(null);
+          saveEdit();
           ev.preventDefault();
         }
         return;
@@ -113,7 +118,7 @@ export function ReviewClient() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [chunks, cursor, editing, draft, applyAction]);
+  }, [chunks, cursor, editing, saveEdit, applyAction]);
 
   const current = chunks[cursor];
   const doc = docs.find((d) => d.id === docId);
@@ -194,7 +199,7 @@ export function ReviewClient() {
           ) : editing === current.id ? (
             <div className="grid gap-2">
               <p className="text-muted-foreground text-sm">
-                Editing #{current.seq} — <kbd>Ctrl/⌘+Enter</kbd> save · <kbd>Esc</kbd> cancel
+                Editing #{current.seq} — ບັນທຶກແລ້ວ ຈະ segment + embed ຄືນ
               </p>
               <Textarea
                 lang="lo"
@@ -203,6 +208,17 @@ export function ReviewClient() {
                 onChange={(e) => setDraft(e.target.value)}
                 className="min-h-60 text-base"
               />
+              <div className="flex items-center gap-2">
+                <Button size="sm" disabled={!draft.trim()} onClick={saveEdit}>
+                  💾 ບັນທຶກ · Save
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setEditing(null)}>
+                  ຍົກເລີກ · Cancel
+                </Button>
+                <span className="text-muted-foreground ml-auto text-xs">
+                  <kbd>Ctrl/⌘+Enter</kbd> save · <kbd>Esc</kbd> cancel
+                </span>
+              </div>
             </div>
           ) : (
             <div>
