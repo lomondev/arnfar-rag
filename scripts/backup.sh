@@ -31,6 +31,16 @@ mkdir -p "$DIR"
 
 case "${1:-dump}" in
   dump)
+    # Disk guard — the 2026-07-25 incident: a full disk crashed every container and a
+    # cleanup prune then deleted them. Warn loudly at 10G, refuse the dump below 2G
+    # (writing a dump onto a full disk makes the outage worse, not better).
+    free_kb=$(df -k --output=avail "$DIR" | tail -1 | tr -d ' ')
+    if (( free_kb < 2 * 1024 * 1024 )); then
+      echo "REFUSING BACKUP: <2G free on $(df -h --output=target "$DIR" | tail -1 | tr -d ' ') — free space first" >&2
+      exit 1
+    elif (( free_kb < 10 * 1024 * 1024 )); then
+      echo "WARNING: low disk — $(df -h --output=avail "$DIR" | tail -1 | tr -d ' ') free. Clean up soon (caches, old models, old dumps)." >&2
+    fi
     out="$DIR/arnfar-$(date +%Y%m%d-%H%M%S).dump"
     pg_dump -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
       --format=custom --file="$out"
