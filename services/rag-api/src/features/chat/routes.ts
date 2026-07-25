@@ -99,6 +99,7 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
         ...(body.conversationId ? { conversationId: body.conversationId } : {}),
         ...(body.collections ? { collections: body.collections } : {}),
         ...(body.kinds ? { kinds: body.kinds } : {}),
+        ...(body.webSearch ? { webSearch: body.webSearch } : {}),
         ...(body.k ? { k: body.k } : {}),
         ...(body.model ? { model: body.model } : {}),
       });
@@ -132,6 +133,7 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
         conversationId: t.Optional(t.String()),
         collections: t.Optional(t.Array(t.String())),
         kinds: t.Optional(t.Array(t.String())),
+        webSearch: t.Optional(t.Boolean()),
         k: t.Optional(t.Number({ minimum: 1, maximum: 20 })),
         model: t.Optional(t.String()),
       }),

@@ -4,6 +4,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUp,
   BookOpen,
+  Globe,
   Check,
   Copy,
   Flag,
@@ -153,6 +154,8 @@ export function ChatClient() {
   // Retrieval scope: "" = all knowledge, "kind:KEY" = one knowledge kind's entries.
   // Users think in their /studio/knowledge categories — raw collections are not exposed.
   const [scope, setScope] = useState("");
+  // Opt-in internet augmentation — default OFF (offline-capable stays the default).
+  const [webOn, setWebOn] = useState(false);
   const [model, setModel] = useState("");
 
   const abortRef = useRef<AbortController | null>(null);
@@ -319,6 +322,7 @@ export function ChatClient() {
           k,
           ...(existingConvId ? { conversationId: existingConvId } : {}),
           ...(scope.startsWith("kind:") ? { kinds: [scope.slice(5)] } : {}),
+          ...(webOn ? { webSearch: true } : {}),
           ...(model ? { model } : {}),
         }),
         signal: ctrl.signal,
@@ -394,7 +398,9 @@ export function ChatClient() {
   }
 
   async function promote(msg: StoredMessage, idx: number) {
-    const ids = (msg.sources ?? []).map((s) => s.id);
+    // Web sources are unverified internet pages with no chunk to cite — the dataset
+    // invariant (every QA cites a non-rejected chunk) only admits dataset sources.
+    const ids = (msg.sources ?? []).filter((s) => s.origin !== "web").map((s) => s.id);
     if (!ids.length) return;
     await promoteToDataset({ question: msg.question ?? "", answer: msg.content, citationIds: ids });
     patchMessage(idx, (m) => ({ ...m, promoted: true }));
@@ -741,6 +747,17 @@ export function ChatClient() {
                   ))}
                 </Select>
               )}
+              <Button
+                type="button"
+                size="xs"
+                variant={webOn ? "default" : "ghost"}
+                onClick={() => setWebOn((v) => !v)}
+                title="ຄົ້ນຫາອິນເຕີເນັດ · include internet results (unverified)"
+                className={webOn ? "gap-1" : "text-muted-foreground gap-1"}
+              >
+                <Globe className="size-3.5" />
+                {webOn ? "web on" : "web"}
+              </Button>
 
               <span className="ms-auto hidden sm:inline">{t.hint}</span>
 
@@ -783,6 +800,21 @@ export function ChatClient() {
 
           <div className="flex-1 overflow-y-auto px-4 py-3">
             <p className="text-sm font-medium">{panel.title}</p>
+            {panel.origin === "web" && panel.url && (
+              <p className="mt-1 text-xs">
+                <span className="bg-amber-500/15 me-2 rounded px-1.5 py-0.5 font-medium text-amber-700 dark:text-amber-400">
+                  web · ບໍ່ທັນຢືນຢັນ
+                </span>
+                <a
+                  href={panel.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary break-all underline underline-offset-2"
+                >
+                  {panel.url}
+                </a>
+              </p>
+            )}
             {panel.headingPath.length > 0 && (
               <p lang="lo" className="text-muted-foreground mt-1 text-xs">
                 {panel.headingPath.join(" › ")}

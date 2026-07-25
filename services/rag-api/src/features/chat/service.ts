@@ -13,7 +13,8 @@ import {
   titleFrom,
   trimForHistory,
 } from "./conversation.ts";
-import { buildSystemPrompt, buildPrompt, toSources, type CitationSource } from "./prompt.ts";
+import { buildSystemPrompt, buildPrompt, toSources, webToSources, type CitationSource } from "./prompt.ts";
+import { webSearch as searchWeb } from "../websearch/service.ts";
 
 export interface ChatParams {
   message: string;
@@ -21,6 +22,8 @@ export interface ChatParams {
   collections?: string[];
   /** Scope retrieval to knowledge kinds (the /chat picker's kind entries). */
   kinds?: string[];
+  /** Opt-in internet augmentation: unverified web pages appended after dataset sources. */
+  webSearch?: boolean;
   k?: number;
   model?: string;
   tenant: TenantContext;
@@ -98,12 +101,17 @@ export async function* chatStream(p: ChatParams): AsyncGenerator<ChatEvent> {
       k: p.k ?? 8,
       tenant: p.tenant,
     });
-    const sources = toSources(result.hits);
+    let sources = toSources(result.hits);
+    if (p.webSearch) {
+      // Fails soft: offline or blocked → [] and the answer stays dataset-only.
+      const web = await searchWeb(p.message, 3);
+      sources = [...sources, ...webToSources(web, sources.length)];
+    }
     yield { type: "citations", sources, glossaryMatches: result.glossaryMatches };
 
     // ── 4. Build the prompt (history → context → question) and stream ───────────
     const { terms, forbidden } = await glossaryForPrompt(p.tenant);
-    const system = buildSystemPrompt(terms, forbidden);
+    const system = buildSystemPrompt(terms, forbidden, sources.some((s) => s.origin === "web"));
     const prompt = buildPrompt(p.message, sources, history);
 
     const streamOpts = p.model
@@ -126,6 +134,7 @@ export async function* chatStream(p: ChatParams): AsyncGenerator<ChatEvent> {
         ...(p.model ? { model: p.model } : {}),
         ...(p.k ? { k: p.k } : {}),
         ...(p.collections ? { collections: p.collections } : {}),
+        ...(p.webSearch ? { webSearch: true } : {}),
       },
     });
     yield { type: "done", conversationId, assistantMessageId: assistantMsg.id };

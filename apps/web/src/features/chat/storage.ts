@@ -15,6 +15,9 @@ export interface StoredSource {
   readonly title: string;
   readonly authority: string | null;
   readonly effectiveDate: string | null;
+  /** Set on internet sources ("web" origin) — dataset chunks have neither. */
+  readonly origin?: "dataset" | "web";
+  readonly url?: string | null;
 }
 
 export interface StoredMessage {

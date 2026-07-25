@@ -128,6 +128,9 @@ export function IngestClient() {
   /* ── stage 1+2: pick file → dry-run preview (clean + chunk report) ── */
   async function runPreview(f: File) {
     setFile(f);
+    // Suggest the filename as the knowledge title immediately — editable, and required
+    // before commit. (Previously this only happened after a successful preview.)
+    setTitle((cur) => cur || f.name.replace(/\.docx$/i, ""));
     setPreview(null);
     setJob(null);
     setError(null);
@@ -140,7 +143,6 @@ export function IngestClient() {
       const data = (await res.json()) as PreviewResult & { error?: string };
       if (!res.ok) throw new Error(data.error ?? `preview failed (${res.status})`);
       setPreview(data);
-      if (!title) setTitle(f.name.replace(/\.docx$/i, ""));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -327,6 +329,40 @@ export function IngestClient() {
           </p>
         )}
 
+        {/* Knowledge metadata — editable from the moment a file is chosen, not buried
+            after the preview. Title is REQUIRED: it becomes the document title users
+            see in Review, citations, and the Knowledge menus. */}
+        {file && !job && (
+          <div className="border-border bg-muted/30 mt-4 grid gap-3 rounded-lg border p-3 sm:grid-cols-3">
+            <div className="sm:col-span-2">
+              <Label className="text-xs font-medium">ຫົວຂໍ້ຄວາມຮູ້ · knowledge title *</Label>
+              <Input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="ເຊັ່ນ: ຄູ່ມືປິດບັນຊີທ້າຍປີ 2026"
+                className="mt-1"
+                lang="lo"
+                autoFocus
+              />
+              <p className="text-muted-foreground mt-1 text-[0.7rem]">
+                ຊື່ນີ້ຈະສະແດງໃນ Review, ແຫຼ່ງອ້າງອີງ ແລະ ໜ້າ Knowledge
+              </p>
+            </div>
+            <div>
+              <Label className="text-xs">collection</Label>
+              <Select value={collection} onChange={(e) => setCollection(e.target.value)} className="mt-1">
+                {COLLECTIONS.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </Select>
+            </div>
+            <div className="sm:col-span-3">
+              <Label className="text-xs">authority (ອົງການອອກເອກະສານ)</Label>
+              <Input value={authority} onChange={(e) => setAuthority(e.target.value)} placeholder="ກະຊວງການເງິນ…" className="mt-1" lang="lo" />
+            </div>
+          </div>
+        )}
+
         {preview && (
           <div className="mt-4">
             {/* summary row */}
@@ -397,32 +433,22 @@ export function IngestClient() {
               )}
             </div>
 
-            {/* metadata + commit */}
+            {/* commit — needs a completed preview AND a title */}
             {!job && (
-              <div className="border-border mt-4 grid gap-3 border-t pt-4 sm:grid-cols-3">
-                <div>
-                  <Label className="text-xs">collection</Label>
-                  <Select value={collection} onChange={(e) => setCollection(e.target.value)} className="mt-1">
-                    {COLLECTIONS.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-xs">title</Label>
-                  <Input value={title} onChange={(e) => setTitle(e.target.value)} className="mt-1" lang="lo" />
-                </div>
-                <div>
-                  <Label className="text-xs">authority</Label>
-                  <Input value={authority} onChange={(e) => setAuthority(e.target.value)} placeholder="ກະຊວງການເງິນ…" className="mt-1" lang="lo" />
-                </div>
-                <div className="flex items-center gap-2 sm:col-span-3">
-                  <Button onClick={() => void commit()} disabled={committing} className="gap-1.5">
-                    {committing ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-                    ນຳເຂົ້າ · commit &amp; embed
-                  </Button>
-                  <Button variant="ghost" onClick={resetUpload} className="text-muted-foreground">ຍົກເລີກ</Button>
-                </div>
+              <div className="border-border mt-4 flex items-center gap-2 border-t pt-4">
+                <Button
+                  onClick={() => void commit()}
+                  disabled={committing || !title.trim()}
+                  title={!title.trim() ? "ໃສ່ຫົວຂໍ້ກ່ອນ · enter a title first" : undefined}
+                  className="gap-1.5"
+                >
+                  {committing ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+                  ນຳເຂົ້າ · commit &amp; embed
+                </Button>
+                {!title.trim() && (
+                  <span lang="lo" className="text-xs text-amber-600">← ໃສ່ຫົວຂໍ້ຄວາມຮູ້ກ່ອນ ຈຶ່ງນຳເຂົ້າໄດ້</span>
+                )}
+                <Button variant="ghost" onClick={resetUpload} className="text-muted-foreground">ຍົກເລີກ</Button>
               </div>
             )}
 

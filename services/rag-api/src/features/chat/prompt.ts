@@ -9,6 +9,9 @@ export interface CitationSource {
   title: string;
   authority: string | null;
   effectiveDate: string | null;
+  /** "dataset" = a verified rag_chunk; "web" = an unverified internet page. */
+  origin: "dataset" | "web";
+  url: string | null;
 }
 
 export function toSources(hits: SearchHit[]): CitationSource[] {
@@ -21,6 +24,29 @@ export function toSources(hits: SearchHit[]): CitationSource[] {
     title: h.title,
     authority: h.authority,
     effectiveDate: h.effective_date,
+    origin: "dataset" as const,
+    url: null,
+  }));
+}
+
+/** Web hits → citation sources, numbered AFTER the dataset sources so [n] stays a
+ *  single sequence. Web text is unverified: it never becomes a dataset citation
+ *  (no chunk id — promote filters on origin). */
+export function webToSources(
+  results: Array<{ title: string; url: string; snippet: string; content: string }>,
+  startN: number,
+): CitationSource[] {
+  return results.map((r, i) => ({
+    n: startN + i + 1,
+    id: `web:${r.url}`,
+    content: r.content || r.snippet,
+    headingPath: [],
+    kind: "web",
+    title: r.title,
+    authority: null,
+    effectiveDate: null,
+    origin: "web" as const,
+    url: r.url,
   }));
 }
 
@@ -29,6 +55,7 @@ export function toSources(hits: SearchHit[]): CitationSource[] {
 export function buildSystemPrompt(
   glossary: Array<{ termLo: string; termEn: string }>,
   forbidden: string[],
+  hasWeb = false,
 ): string {
   const terms = glossary.length
     ? "Approved terminology (use ONLY these Lao terms):\n" +
@@ -46,6 +73,9 @@ export function buildSystemPrompt(
     "- When citing law, state the authority and effective date; if a source is superseded, say so.",
     terms,
     forbid,
+    hasWeb
+      ? "Sources marked (web: url) are internet pages — UNVERIFIED. Prefer dataset sources when they conflict; when a claim rests only on a (web) source, cite it with [n] and name the website."
+      : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -62,11 +92,12 @@ export function buildContext(sources: CitationSource[]): string {
       const head = s.headingPath.length ? s.headingPath.join(" › ") : s.title;
       const auth = s.authority ? `, authority: ${s.authority}` : "";
       const eff = s.effectiveDate ? `, effective: ${s.effectiveDate}` : "";
-      const body =
-        s.content.length > MAX_SOURCE_CHARS
-          ? `${s.content.slice(0, MAX_SOURCE_CHARS)}…`
-          : s.content;
-      return `[${s.n}] (${head}${auth}${eff})\n${body}`;
+      const web = s.origin === "web" ? ` (web: ${s.url})` : "";
+      // Web pages get a larger slice: unlike a curated chunk, the answer-bearing
+      // sentence is often buried mid-page, and 700 chars cuts it off.
+      const cap = s.origin === "web" ? 1600 : MAX_SOURCE_CHARS;
+      const body = s.content.length > cap ? `${s.content.slice(0, cap)}…` : s.content;
+      return `[${s.n}] (${head}${auth}${eff}${web})\n${body}`;
     })
     .join("\n\n");
 }
