@@ -15,8 +15,8 @@ export interface StoredSource {
   readonly title: string;
   readonly authority: string | null;
   readonly effectiveDate: string | null;
-  /** Set on internet sources ("web" origin) — dataset chunks have neither. */
-  readonly origin?: "dataset" | "web";
+  /** Dataset chunks omit these; "web" = internet page, "erp" = live ERP figure. */
+  readonly origin?: "dataset" | "web" | "erp";
   readonly url?: string | null;
 }
 
