@@ -56,6 +56,9 @@ export async function ensureDemoErp(): Promise<void> {
     sql`SELECT count(*)::int AS n FROM erp.customer`,
   )) as unknown as { n: number }[];
   if ((rows[0]?.n ?? 0) > 0) {
+    // Data already seeded — but the contract views must exist regardless (they were
+    // added after the first seed shipped, and CREATE OR REPLACE is idempotent).
+    await createContractViews();
     ensured = true;
     return;
   }
@@ -89,5 +92,26 @@ export async function ensureDemoErp(): Promise<void> {
       ('2026-06-30','531', 5500000,0,'PMT INV-2026-002'), ('2026-06-30','411',0, 5500000,'PMT INV-2026-002'),
       ('2026-07-10','531',11000000,0,'PMT INV-2026-003'), ('2026-07-10','411',0,11000000,'PMT INV-2026-003');
   `);
+  await createContractViews();
   ensured = true;
+}
+
+/** The SAME three views a production ERP provides (docs/ERP-INTEGRATION.md), here
+ *  mapped over the demo tables — so demo and production share one code path in the
+ *  tools, and the demo doubles as a living example of the contract. */
+async function createContractViews(): Promise<void> {
+  await db().execute(sql`
+    CREATE OR REPLACE VIEW public.arnfar_ai_customer AS
+      SELECT id, name_lo, phone FROM erp.customer;
+
+    CREATE OR REPLACE VIEW public.arnfar_ai_invoice AS
+      SELECT i.id, i.ref, i.customer_id, c.name_lo AS customer_lo, i.issue_date,
+             i.net_lak, i.vat_lak, i.gross_lak, i.status,
+             coalesce((SELECT sum(p.amount_lak) FROM erp.payment p
+                       WHERE p.invoice_id = i.id), 0)::bigint AS paid_lak
+      FROM erp.invoice i JOIN erp.customer c ON c.id = i.customer_id;
+
+    CREATE OR REPLACE VIEW public.arnfar_ai_gl_entry AS
+      SELECT entry_date, account_code, debit_lak, credit_lak, memo FROM erp.gl_entry;
+  `);
 }

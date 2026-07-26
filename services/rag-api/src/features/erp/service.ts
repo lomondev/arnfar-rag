@@ -1,8 +1,14 @@
 import { sql } from "drizzle-orm";
 
-import { db } from "../../lib/db.ts";
+import { erpDb, erpMode } from "../../lib/erpdb.ts";
 import type { CitationSource } from "../chat/prompt.ts";
 import { ensureDemoErp } from "./demo.ts";
+
+/** Demo bootstrap only when no external ERP is configured — a production ERP
+ *  provides the contract views itself. */
+async function ready(): Promise<void> {
+  if (erpMode() === "demo") await ensureDemoErp();
+}
 
 /** Live-ERP read-only tools (ROADMAP Phase 3 — the moat).
  *
@@ -36,49 +42,43 @@ export interface ErpToolCall {
 /* ── tools ────────────────────────────────────────────────────────────────── */
 
 export async function customerOutstanding(nameFragment?: string) {
-  await ensureDemoErp();
+  await ready();
   const needle = `%${nameFragment ?? ""}%`;
-  return plain<{ name_lo: string; invoiced_lak: string; paid_lak: string; outstanding_lak: string }>(await db().execute(sql`
-    SELECT c.name_lo,
-           coalesce(sum(i.gross_lak), 0)::text                                   AS invoiced_lak,
-           coalesce((SELECT sum(p.amount_lak) FROM erp.payment p
-                     JOIN erp.invoice pi ON pi.id = p.invoice_id
-                     WHERE pi.customer_id = c.id), 0)::text                      AS paid_lak,
-           (coalesce(sum(i.gross_lak), 0)
-            - coalesce((SELECT sum(p.amount_lak) FROM erp.payment p
-                        JOIN erp.invoice pi ON pi.id = p.invoice_id
-                        WHERE pi.customer_id = c.id), 0))::text                  AS outstanding_lak
-    FROM erp.customer c
-    LEFT JOIN erp.invoice i ON i.customer_id = c.id
-    WHERE c.name_lo ILIKE ${needle}
-    GROUP BY c.id, c.name_lo
-    ORDER BY c.name_lo
-  `));
+  return plain<{ name_lo: string; invoiced_lak: string; paid_lak: string; outstanding_lak: string }>(
+    await erpDb().execute(sql`
+      SELECT customer_lo AS name_lo,
+             sum(gross_lak)::text                    AS invoiced_lak,
+             sum(paid_lak)::text                     AS paid_lak,
+             (sum(gross_lak) - sum(paid_lak))::text  AS outstanding_lak
+      FROM arnfar_ai_invoice
+      WHERE customer_lo ILIKE ${needle}
+      GROUP BY customer_lo
+      ORDER BY customer_lo
+    `),
+  );
 }
 
 export async function invoiceLookup(q: string) {
-  await ensureDemoErp();
+  await ready();
   const needle = `%${q}%`;
-  return plain<Record<string, string>>(await db().execute(sql`
-    SELECT i.ref, c.name_lo AS customer_lo, i.issue_date::text,
-           i.net_lak::text, i.vat_lak::text, i.gross_lak::text, i.status,
-           coalesce((SELECT sum(p.amount_lak) FROM erp.payment p WHERE p.invoice_id = i.id), 0)::text AS paid_lak
-    FROM erp.invoice i
-    JOIN erp.customer c ON c.id = i.customer_id
-    WHERE i.ref ILIKE ${needle} OR c.name_lo ILIKE ${needle}
-    ORDER BY i.issue_date DESC
+  return plain<Record<string, string>>(await erpDb().execute(sql`
+    SELECT ref, customer_lo, issue_date::text,
+           net_lak::text, vat_lak::text, gross_lak::text, status, paid_lak::text
+    FROM arnfar_ai_invoice
+    WHERE ref ILIKE ${needle} OR customer_lo ILIKE ${needle}
+    ORDER BY issue_date DESC
     LIMIT 10
   `));
 }
 
 export async function accountBalance(codePrefix: string) {
-  await ensureDemoErp();
-  return plain<{ account_code: string; debit_lak: string; credit_lak: string; balance_lak: string }>(await db().execute(sql`
+  await ready();
+  return plain<{ account_code: string; debit_lak: string; credit_lak: string; balance_lak: string }>(await erpDb().execute(sql`
     SELECT account_code,
            sum(debit_lak)::text  AS debit_lak,
            sum(credit_lak)::text AS credit_lak,
            (sum(debit_lak) - sum(credit_lak))::text AS balance_lak
-    FROM erp.gl_entry
+    FROM arnfar_ai_gl_entry
     WHERE account_code LIKE ${codePrefix + "%"}
     GROUP BY account_code
     ORDER BY account_code
@@ -86,12 +86,12 @@ export async function accountBalance(codePrefix: string) {
 }
 
 export async function trialBalance() {
-  await ensureDemoErp();
-  return plain<{ account_code: string; debit_lak: string; credit_lak: string }>(await db().execute(sql`
+  await ready();
+  return plain<{ account_code: string; debit_lak: string; credit_lak: string }>(await erpDb().execute(sql`
     SELECT account_code,
            sum(debit_lak)::text  AS debit_lak,
            sum(credit_lak)::text AS credit_lak
-    FROM erp.gl_entry
+    FROM arnfar_ai_gl_entry
     GROUP BY account_code
     ORDER BY account_code
   `));
@@ -100,8 +100,8 @@ export async function trialBalance() {
 /* ── intent detection (conservative — fire only on clear ERP questions) ──── */
 
 async function customerNameIn(question: string): Promise<string | null> {
-  await ensureDemoErp();
-  const rows = (await db().execute(sql`SELECT name_lo FROM erp.customer`)) as unknown as {
+  await ready();
+  const rows = (await erpDb().execute(sql`SELECT name_lo FROM arnfar_ai_customer`)) as unknown as {
     name_lo: string;
   }[];
   // Match on the distinctive part of the name (drop the ບໍລິສັດ/ຮ້ານ/ຈຳກັດ chrome).
