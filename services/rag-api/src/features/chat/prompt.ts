@@ -9,8 +9,9 @@ export interface CitationSource {
   title: string;
   authority: string | null;
   effectiveDate: string | null;
-  /** "dataset" = a verified rag_chunk; "web" = an unverified internet page. */
-  origin: "dataset" | "web";
+  /** "dataset" = a verified rag_chunk; "web" = an unverified internet page;
+   *  "erp" = a live read-only figure from the ERP database (point-in-time, exact). */
+  origin: "dataset" | "web" | "erp";
   url: string | null;
 }
 
@@ -56,6 +57,7 @@ export function buildSystemPrompt(
   glossary: Array<{ termLo: string; termEn: string }>,
   forbidden: string[],
   hasWeb = false,
+  hasErp = false,
 ): string {
   const terms = glossary.length
     ? "Approved terminology (use ONLY these Lao terms):\n" +
@@ -76,6 +78,9 @@ export function buildSystemPrompt(
     hasWeb
       ? "Sources marked (web: url) are internet pages — UNVERIFIED. Prefer dataset sources when they conflict; when a claim rests only on a (web) source, cite it with [n] and name the website."
       : "",
+    hasErp
+      ? "Sources marked (erp) are LIVE figures from the company's ERP system — exact and current. Quote the numbers precisely as given (integer LAK, thousands-separated) and cite them with [n]."
+      : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -92,7 +97,7 @@ export function buildContext(sources: CitationSource[]): string {
       const head = s.headingPath.length ? s.headingPath.join(" › ") : s.title;
       const auth = s.authority ? `, authority: ${s.authority}` : "";
       const eff = s.effectiveDate ? `, effective: ${s.effectiveDate}` : "";
-      const web = s.origin === "web" ? ` (web: ${s.url})` : "";
+      const web = s.origin === "web" ? ` (web: ${s.url})` : s.origin === "erp" ? " (erp: live system data)" : "";
       // Web pages get a larger slice: unlike a curated chunk, the answer-bearing
       // sentence is often buried mid-page, and 700 chars cuts it off.
       const cap = s.origin === "web" ? 1600 : MAX_SOURCE_CHARS;

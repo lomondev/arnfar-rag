@@ -400,7 +400,9 @@ export function ChatClient() {
   async function promote(msg: StoredMessage, idx: number) {
     // Web sources are unverified internet pages with no chunk to cite — the dataset
     // invariant (every QA cites a non-rejected chunk) only admits dataset sources.
-    const ids = (msg.sources ?? []).filter((s) => s.origin !== "web").map((s) => s.id);
+    const ids = (msg.sources ?? [])
+      .filter((s) => !s.origin || s.origin === "dataset") // web + erp are unpromotable
+      .map((s) => s.id);
     if (!ids.length) return;
     await promoteToDataset({ question: msg.question ?? "", answer: msg.content, citationIds: ids });
     patchMessage(idx, (m) => ({ ...m, promoted: true }));
@@ -800,6 +802,14 @@ export function ChatClient() {
 
           <div className="flex-1 overflow-y-auto px-4 py-3">
             <p className="text-sm font-medium">{panel.title}</p>
+            {panel.origin === "erp" && (
+              <p className="mt-1 text-xs">
+                <span className="me-2 rounded bg-emerald-500/15 px-1.5 py-0.5 font-medium text-emerald-700 dark:text-emerald-400">
+                  erp · ຂໍ້ມູນຈິງຈາກລະບົບ
+                </span>
+                <span className="text-muted-foreground">point-in-time — ບໍ່ເຂົ້າ dataset</span>
+              </p>
+            )}
             {panel.origin === "web" && panel.url && (
               <p className="mt-1 text-xs">
                 <span className="bg-amber-500/15 me-2 rounded px-1.5 py-0.5 font-medium text-amber-700 dark:text-amber-400">

@@ -15,6 +15,7 @@ import {
 } from "./conversation.ts";
 import { buildSystemPrompt, buildPrompt, toSources, webToSources, type CitationSource } from "./prompt.ts";
 import { webSearch as searchWeb } from "../websearch/service.ts";
+import { detectAndRunErpTools, erpToSources } from "../erp/service.ts";
 
 export interface ChatParams {
   message: string;
@@ -102,6 +103,9 @@ export async function* chatStream(p: ChatParams): AsyncGenerator<ChatEvent> {
       tenant: p.tenant,
     });
     let sources = toSources(result.hits);
+    // ERP pre-pass — deterministic Lao intent patterns; read-only; fails soft.
+    const erpCalls = await detectAndRunErpTools(p.message);
+    if (erpCalls.length) sources = [...sources, ...erpToSources(erpCalls, sources.length)];
     if (p.webSearch) {
       // Fails soft: offline or blocked → [] and the answer stays dataset-only.
       const web = await searchWeb(p.message, 3);
@@ -111,7 +115,12 @@ export async function* chatStream(p: ChatParams): AsyncGenerator<ChatEvent> {
 
     // ── 4. Build the prompt (history → context → question) and stream ───────────
     const { terms, forbidden } = await glossaryForPrompt(p.tenant);
-    const system = buildSystemPrompt(terms, forbidden, sources.some((s) => s.origin === "web"));
+    const system = buildSystemPrompt(
+      terms,
+      forbidden,
+      sources.some((s) => s.origin === "web"),
+      sources.some((s) => s.origin === "erp"),
+    );
     const prompt = buildPrompt(p.message, sources, history);
 
     const streamOpts = p.model
@@ -135,6 +144,7 @@ export async function* chatStream(p: ChatParams): AsyncGenerator<ChatEvent> {
         ...(p.k ? { k: p.k } : {}),
         ...(p.collections ? { collections: p.collections } : {}),
         ...(p.webSearch ? { webSearch: true } : {}),
+        ...(erpCalls.length ? { erpTools: erpCalls.map((c) => c.tool) } : {}),
       },
     });
     yield { type: "done", conversationId, assistantMessageId: assistantMsg.id };

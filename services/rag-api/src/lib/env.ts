@@ -23,6 +23,10 @@ export const env = {
 
   storageRoot: process.env.STORAGE_FS_ROOT ?? "./storage",
 
+  // The company's ERP database (read-only role recommended). Unset = the bundled
+  // demo `erp` schema in the app's own database. See docs/ERP-INTEGRATION.md.
+  erpDatabaseUrl: process.env.ERP_DATABASE_URL ?? null,
+
   // Single-tenant dev seed; the columns/filters exist everywhere regardless.
   devHfId: req("DEV_HF_ID"),
   devCompanyId: req("DEV_COMPANY_ID"),
