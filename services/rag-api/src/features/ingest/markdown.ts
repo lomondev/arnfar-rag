@@ -60,12 +60,61 @@ function updateStack(stack: string[], level: number, text: string): void {
   stack.push(text);
 }
 
+function swapBytes(b: Uint8Array): Uint8Array {
+  const out = new Uint8Array(b.length - (b.length % 2));
+  for (let i = 0; i + 1 < b.length; i += 2) {
+    out[i] = b[i + 1]!;
+    out[i + 1] = b[i]!;
+  }
+  return out;
+}
+
+function countChar(s: string, ch: string): number {
+  let n = 0;
+  for (const c of s) if (c === ch) n++;
+  return n;
+}
+
+/** Decode to text: UTF-8 by default, UTF-16 via BOM or NUL-density heuristic —
+ *  Windows Notepad saves Lao text as UTF-16 ("Unicode"), which a blind UTF-8
+ *  decode turns into NUL-riddled mojibake that Postgres then rejects.
+ *  Throws (→ 422 with a clear message) if the bytes are not decodable text. */
+function decodeText(bytes: Uint8Array, warnings: string[]): string {
+  let text: string;
+  if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
+    text = new TextDecoder("utf-16le").decode(bytes.subarray(2));
+    warnings.push("ໄຟລ໌ເປັນ UTF-16LE — ຖອດລະຫັດໃຫ້ແລ້ວ; ແນະນຳບັນທຶກເປັນ UTF-8");
+  } else if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+    text = new TextDecoder("utf-16le").decode(swapBytes(bytes.subarray(2)));
+    warnings.push("ໄຟລ໌ເປັນ UTF-16BE — ຖອດລະຫັດໃຫ້ແລ້ວ; ແນະນຳບັນທຶກເປັນ UTF-8");
+  } else {
+    text = new TextDecoder("utf-8").decode(bytes).replace(/^\uFEFF/, "");
+    const nuls = countChar(text, "\u0000");
+    if (nuls > 0 && nuls > text.length / 8) {
+      // BOM-less UTF-16: try both byte orders, keep the cleaner decode.
+      const le = new TextDecoder("utf-16le").decode(bytes);
+      const be = new TextDecoder("utf-16le").decode(swapBytes(bytes));
+      const bad = (s: string): number => countChar(s, "\uFFFD") + countChar(s, "\u0000");
+      text = (bad(le) <= bad(be) ? le : be).replace(/^\uFEFF/, "");
+      warnings.push("ໄຟລ໌ເປັນ UTF-16 (ບໍ່ມີ BOM) — ຖອດລະຫັດໃຫ້ແລ້ວ; ແນະນຳບັນທຶກເປັນ UTF-8");
+    }
+  }
+  if (text.includes("\u0000")) {
+    text = text.replaceAll("\u0000", "");
+    warnings.push("NUL characters removed — file encoding looks damaged, please re-save as UTF-8");
+  }
+  if (countChar(text, "\uFFFD") > text.length / 20) {
+    throw new Error("ໄຟລ໌ບໍ່ແມ່ນ text ທີ່ອ່ານໄດ້ — ບັນທຶກເປັນ UTF-8 (.md) ກ່ອນ / file is not readable text, save it as UTF-8");
+  }
+  return text;
+}
+
 export function extractMarkdown(bytes: Uint8Array): ExtractResult {
-  const raw = new TextDecoder("utf-8").decode(bytes).replace(/^\uFEFF/, "");
+  const warnings: string[] = [];
+  const raw = decodeText(bytes, warnings);
   const lines = raw.split(/\r\n|\r|\n/);
 
   const blocks: ExtractBlock[] = [];
-  const warnings: string[] = [];
   const stack: string[] = [];
   let para: string[] = [];
 
