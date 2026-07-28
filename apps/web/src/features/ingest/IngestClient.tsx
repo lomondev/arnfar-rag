@@ -127,6 +127,12 @@ export function IngestClient() {
 
   /* ── stage 1+2: pick file → dry-run preview (clean + chunk report) ── */
   async function runPreview(f: File) {
+    // Drag-and-drop bypasses the input's `accept` filter — reject unsupported
+    // types here with a clear message instead of a cryptic extractor error.
+    if (!/\.(docx|md|markdown)$/i.test(f.name)) {
+      setError(`ຮອງຮັບສະເພາະ .docx ແລະ .md — "${f.name}" ບໍ່ຮອງຮັບ (unsupported file type)`);
+      return;
+    }
     setFile(f);
     // Suggest the filename as the knowledge title immediately — editable, and required
     // before commit. (Previously this only happened after a successful preview.)
@@ -379,6 +385,18 @@ export function IngestClient() {
                 <Badge variant="secondary">CoA rows: {preview.accountRows}</Badge>
               )}
             </div>
+
+            {/* extractor warnings (encoding, unclosed fences, …) */}
+            {preview.warnings.length > 0 && (
+              <div className="border-amber-500/40 bg-amber-500/10 mt-3 rounded-lg border px-3 py-2 text-xs">
+                {preview.warnings.map((w) => (
+                  <p key={w} className="flex items-center gap-1.5">
+                    <AlertTriangle className="size-3.5 shrink-0 text-amber-600" />
+                    <span lang="lo">{w}</span>
+                  </p>
+                ))}
+              </div>
+            )}
 
             {/* clean report */}
             <div
