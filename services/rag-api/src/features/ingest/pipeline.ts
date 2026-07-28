@@ -5,9 +5,10 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "../../lib/db.ts";
 import { newId } from "../../lib/ids.ts";
-import { extractDocx, normalize, segment, type ExtractBlock } from "../../lib/sidecars.ts";
+import { normalize, segment, type ExtractBlock } from "../../lib/sidecars.ts";
 import { originalKey, put, sha256 } from "../../lib/storage.ts";
 import { chunkBlocks, type SegBlock } from "./chunker.ts";
+import { extractFile } from "./extract.ts";
 import { inferAccountAttrs } from "./accounts.ts";
 import { fixLaoDefects } from "../lao/clean.ts";
 
@@ -103,10 +104,10 @@ export async function ingestDocx(input: IngestInput): Promise<IngestResult> {
     meta: {},
   });
 
-  // 3. extract via docx-extractor.
+  // 3. extract — .md in-process, .docx via the docx-extractor sidecar.
   let extraction;
   try {
-    extraction = await extractDocx(bytes, filename);
+    extraction = await extractFile(bytes, filename);
   } catch (err) {
     await setStatus(documentId, "failed");
     throw err;
