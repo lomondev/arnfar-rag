@@ -1,5 +1,6 @@
-import { extractDocx, segment, type ExtractBlock } from "../../lib/sidecars.ts";
+import { segment, type ExtractBlock } from "../../lib/sidecars.ts";
 import { chunkBlocks, type SegBlock } from "./chunker.ts";
+import { extractFile } from "./extract.ts";
 import { blockText } from "./pipeline.ts";
 import { fixLaoDefects, scanLaoDefects, type LaoDefects } from "../lao/clean.ts";
 
@@ -31,7 +32,7 @@ export interface PreviewResult {
 }
 
 export async function previewDocx(bytes: Uint8Array, filename: string): Promise<PreviewResult> {
-  const extraction = await extractDocx(bytes, filename);
+  const extraction = await extractFile(bytes, filename);
 
   // Mirror the pipeline's segmentation stage (cleaned text drives seg/token counts).
   const segBlocks: SegBlock[] = [];

@@ -130,7 +130,7 @@ export function IngestClient() {
     setFile(f);
     // Suggest the filename as the knowledge title immediately — editable, and required
     // before commit. (Previously this only happened after a successful preview.)
-    setTitle((cur) => cur || f.name.replace(/\.docx$/i, ""));
+    setTitle((cur) => cur || f.name.replace(/\.(docx|md|markdown)$/i, ""));
     setPreview(null);
     setJob(null);
     setError(null);
@@ -308,12 +308,12 @@ export function IngestClient() {
             )}
           >
             <FileUp className="size-6" />
-            <span lang="lo">ລາກໄຟລ໌ .docx ມາວາງ ຫຼື ກົດເລືອກ</span>
-            <span className="text-xs">.docx only — ການກວດ ບໍ່ຂຽນຫຍັງລົງຖານຂໍ້ມູນ</span>
+            <span lang="lo">ລາກໄຟລ໌ .docx ຫຼື .md ມາວາງ ຫຼື ກົດເລືອກ</span>
+            <span className="text-xs">.docx / .md — ການກວດ ບໍ່ຂຽນຫຍັງລົງຖານຂໍ້ມູນ</span>
             <input
               ref={fileInput}
               type="file"
-              accept=".docx"
+              accept=".docx,.md,.markdown"
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
