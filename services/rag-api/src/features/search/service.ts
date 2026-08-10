@@ -65,20 +65,43 @@ export async function listCollections(tenant: TenantContext): Promise<string[]> 
   ].sort();
 }
 
+export interface PreparedQuery {
+  /** Dense input: the question in its natural form — bge-m3 does its own tokenization. */
+  queryEmbedding: number[];
+  /** Lexical input: LaoNLP-segmented, plus verified glossary terms for the EN→LO case. */
+  querySeg: string;
+  glossaryMatches: GlossaryMatch[];
+}
+
+/** Turn a raw question into the two retrieval inputs, in one place.
+ *
+ *  The eval harness calls this too, so a run measures the production query pipeline
+ *  (segmentation AND glossary expansion) instead of a lookalike that quietly omits a
+ *  step — otherwise eval's lexical arm sees a different string than a user's does. */
+export async function prepareQuery(
+  query: string,
+  tenant: TenantContext,
+): Promise<PreparedQuery> {
+  // Segment (lexical), embed (dense) and look up glossary terms in parallel.
+  const [seg, queryEmbedding, expansion] = await Promise.all([
+    segment(query),
+    embedOne(query),
+    expandWithGlossary(query, tenant),
+  ]);
+  return {
+    queryEmbedding,
+    querySeg: expansion.extraSeg ? `${seg.seg_text} ${expansion.extraSeg}` : seg.seg_text,
+    glossaryMatches: expansion.matched,
+  };
+}
+
 export async function search(p: SearchParams): Promise<SearchResponse> {
   // No collections requested = search the whole tenant corpus (collections are
   // user-creatable, so a fixed fallback list would hide entries in new ones).
   const collections = p.collections ?? [];
   const k = p.k ?? 8;
 
-  // Segment (for lexical) and embed (natural form, for dense) in parallel.
-  const [seg, queryEmbedding] = await Promise.all([
-    segment(p.query),
-    embedOne(p.query),
-  ]);
-
-  const { extraSeg, matched } = await expandWithGlossary(p.query, p.tenant);
-  const querySeg = extraSeg ? `${seg.seg_text} ${extraSeg}` : seg.seg_text;
+  const { queryEmbedding, querySeg, glossaryMatches } = await prepareQuery(p.query, p.tenant);
 
   const result = await hybridSearch({
     tenant: p.tenant,
@@ -93,7 +116,7 @@ export async function search(p: SearchParams): Promise<SearchResponse> {
   return {
     query: p.query,
     querySeg,
-    glossaryMatches: matched,
+    glossaryMatches,
     hits: result.hits,
     ...(result.explain ? { explain: result.explain } : {}),
   };

@@ -13,6 +13,7 @@ import {
   titleFrom,
   trimForHistory,
 } from "./conversation.ts";
+import { condenseQuery } from "./condense.ts";
 import { buildSystemPrompt, buildPrompt, toSources, webToSources, type CitationSource } from "./prompt.ts";
 import { webSearch as searchWeb } from "../websearch/service.ts";
 import { detectAndRunErpTools, erpToSources } from "../erp/service.ts";
@@ -33,7 +34,14 @@ export interface ChatParams {
 
 export type ChatEvent =
   | { type: "created"; conversationId: string; userMessageId: string }
-  | { type: "citations"; sources: CitationSource[]; glossaryMatches: unknown[] }
+  | {
+      type: "citations";
+      sources: CitationSource[];
+      glossaryMatches: unknown[];
+      /** The question retrieval ran on — differs from the user's message when a
+       *  follow-up was condensed into a standalone question. */
+      retrievalQuery: string;
+    }
   | { type: "token"; t: string }
   | { type: "done"; conversationId: string; assistantMessageId: string }
   | { type: "error"; error: string };
@@ -62,7 +70,8 @@ async function glossaryForPrompt(tenant: TenantContext) {
  * RAG chat with multi-turn memory. Flow:
  *   1. Resolve/create the conversation, persist the user turn.
  *   2. Load recent history (capped) for context injection.
- *   3. Retrieve on the *current* question (hybrid + glossary expansion).
+ *   3. Condense history + question into a standalone query, retrieve on that
+ *      (hybrid + glossary expansion).
  *   4. Stream tokens, accumulating the full answer.
  *   5. Persist the assistant turn (sources + meta) on completion.
  *
@@ -94,24 +103,36 @@ export async function* chatStream(p: ChatParams): AsyncGenerator<ChatEvent> {
       content: trimForHistory(m.role, m.content),
     }));
 
-    // ── 3. Retrieve on the current question ────────────────────────────────────
+    // ── 3. Condense to a standalone question, then retrieve on it ──────────────
+    // "ແລ້ວປີກາຍເດ?" carries its meaning in the history, not in its own words — embedding
+    // it verbatim retrieves noise. Falls back to the raw message whenever the rewrite is
+    // unavailable or fails a guard (see condense.ts).
+    const condensed = await condenseQuery(p.message, history, p.model);
     const result = await search({
-      query: p.message,
+      query: condensed.query,
       collections: p.collections ?? [],
       kinds: p.kinds ?? [],
       k: p.k ?? 8,
       tenant: p.tenant,
     });
     let sources = toSources(result.hits);
-    // ERP pre-pass — deterministic Lao intent patterns; read-only; fails soft.
+    // ERP pre-pass — deterministic Lao intent patterns; read-only; fails soft. It reads the
+    // user's LITERAL message, never the rewrite: these patterns lift account codes and
+    // invoice numbers straight out of the text, and a paraphrase that shifted a digit would
+    // query the wrong account. Retrieval is fuzzy and tolerates a rewrite; ERP lookups aren't.
     const erpCalls = await detectAndRunErpTools(p.message);
     if (erpCalls.length) sources = [...sources, ...erpToSources(erpCalls, sources.length)];
     if (p.webSearch) {
       // Fails soft: offline or blocked → [] and the answer stays dataset-only.
-      const web = await searchWeb(p.message, 3);
+      const web = await searchWeb(condensed.query, 3);
       sources = [...sources, ...webToSources(web, sources.length)];
     }
-    yield { type: "citations", sources, glossaryMatches: result.glossaryMatches };
+    yield {
+      type: "citations",
+      sources,
+      glossaryMatches: result.glossaryMatches,
+      retrievalQuery: condensed.query,
+    };
 
     // ── 4. Build the prompt (history → context → question) and stream ───────────
     const { terms, forbidden } = await glossaryForPrompt(p.tenant);
@@ -120,7 +141,10 @@ export async function* chatStream(p: ChatParams): AsyncGenerator<ChatEvent> {
       forbidden,
       sources.some((s) => s.origin === "web"),
       sources.some((s) => s.origin === "erp"),
+      sources.some((s) => s.superseded !== null),
     );
+    // The generator answers the user's ORIGINAL wording — only the retriever saw the
+    // rewrite. Asking back a condensed question reads as if the assistant misheard.
     const prompt = buildPrompt(p.message, sources, history);
 
     const streamOpts = p.model
@@ -145,6 +169,9 @@ export async function* chatStream(p: ChatParams): AsyncGenerator<ChatEvent> {
         ...(p.collections ? { collections: p.collections } : {}),
         ...(p.webSearch ? { webSearch: true } : {}),
         ...(erpCalls.length ? { erpTools: erpCalls.map((c) => c.tool) } : {}),
+        // Recorded only when it differs from the message — this is what a bad-recall
+        // report needs to answer "what did it actually search for?".
+        ...(condensed.rewritten ? { retrievalQuery: condensed.query } : {}),
       },
     });
     yield { type: "done", conversationId, assistantMessageId: assistantMsg.id };

@@ -205,6 +205,7 @@ export async function exportDataset(
       authority: schema.ragDocument.authority,
       effective_date: schema.ragDocument.effectiveDate,
       license: schema.ragDocument.license,
+      superseded_by: schema.ragDocument.supersededBy,
     })
     .from(schema.ragDocument)
     .where(
@@ -256,7 +257,14 @@ function dataCardMd(
   version: string,
   createdAt: string,
   manifest: { counts: Record<string, number>; warnings: string[] },
-  docs: Array<{ title: string; collection: string; authority: string | null; effective_date: string | null; license: string | null }>,
+  docs: Array<{
+    title: string;
+    collection: string;
+    authority: string | null;
+    effective_date: string | null;
+    license: string | null;
+    superseded_by?: string | null;
+  }>,
 ): string {
   const c = manifest.counts;
   return `# Data Card — arnfar-lao-accounting v${version}
@@ -280,7 +288,7 @@ advice; verify against the cited source and its effective date.
 | eval_set.jsonl | ${c.eval_set} |
 
 ## Provenance & authority
-${docs.length ? docs.map((d) => `- **${d.title}** (${d.collection}) — authority: ${d.authority ?? "n/a"}, effective: ${d.effective_date ?? "n/a"}, license: ${d.license ?? "internal"}`).join("\n") : "- (none)"}
+${docs.length ? docs.map((d) => `- **${d.title}** (${d.collection}) — authority: ${d.authority ?? "n/a"}, effective: ${d.effective_date ?? "n/a"}, license: ${d.license ?? "internal"}${d.superseded_by ? " — ⚠ **SUPERSEDED**, no longer in force" : ""}`).join("\n") : "- (none)"}
 
 ## Guarantees
 - Only \`verified = true\` glossary, chart-of-accounts, and QA rows are included.

@@ -26,6 +26,11 @@ export const env = {
   // The company's ERP database (read-only role recommended). Unset = the bundled
   // demo `erp` schema in the app's own database. See docs/ERP-INTEGRATION.md.
   erpDatabaseUrl: process.env.ERP_DATABASE_URL ?? null,
+  // Demo mode re-seeds its fixtures whenever erp.customer is empty, so deleting the
+  // rows does not remove them — the next tool call puts them back. Set
+  // ERP_DEMO_SEED=false to keep a deliberately emptied ERP schema empty. Defaults to
+  // seeding, so a fresh clone still has a working demo out of the box.
+  erpDemoSeed: (process.env.ERP_DEMO_SEED ?? "true").toLowerCase() !== "false",
 
   // Single-tenant dev seed; the columns/filters exist everywhere regardless.
   devHfId: req("DEV_HF_ID"),
