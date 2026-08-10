@@ -180,6 +180,7 @@ export function erpToSources(calls: ErpToolCall[], startN: number): CitationSour
     title: c.titleLo,
     authority: "Arnfar ERP (live)",
     effectiveDate: null,
+    superseded: null, // live system reads are current by definition
     origin: "erp" as const,
     url: null,
   }));

@@ -116,7 +116,7 @@ export async function retroClean(tenant: Tenant, dryRun: boolean): Promise<Retro
 export async function deleteDocument(
   tenant: Tenant,
   documentId: string,
-): Promise<{ id: string; deletedChunks: number } | null> {
+): Promise<{ id: string; deletedChunks: number; releasedSupersession: number } | null> {
   const [doc] = await db()
     .select({ id: schema.ragDocument.id, title: schema.ragDocument.title })
     .from(schema.ragDocument)
@@ -137,6 +137,22 @@ export async function deleteDocument(
 
   // Clean up this document's queued jobs first (FK has no cascade from job → doc).
   await db().delete(schema.ingestJob).where(eq(schema.ingestJob.documentId, documentId));
+
+  // Release any document that named this one as its replacement. The self-FK is NO ACTION,
+  // so a surviving pointer aborts the delete with a raw constraint error. Those documents
+  // stop being marked superseded — which is why the route warns before getting here.
+  const released = await db()
+    .update(schema.ragDocument)
+    .set({ supersededBy: null, updatedAt: new Date() })
+    .where(
+      and(
+        eq(schema.ragDocument.supersededBy, documentId),
+        eq(schema.ragDocument.hfId, tenant.hfId),
+        eq(schema.ragDocument.companyId, tenant.companyId),
+      ),
+    )
+    .returning({ id: schema.ragDocument.id });
+
   await db().delete(schema.ragDocument).where(eq(schema.ragDocument.id, documentId));
 
   await db().insert(schema.outboxEvent).values({
@@ -145,10 +161,129 @@ export async function deleteDocument(
     aggregateType: "rag_document",
     aggregateId: documentId,
     eventType: "document.deleted",
-    payload: { title: doc.title, deletedChunks: chunkIds.length },
+    payload: {
+      title: doc.title,
+      deletedChunks: chunkIds.length,
+      releasedSupersession: released.length,
+    },
   });
 
-  return { id: documentId, deletedChunks: chunkIds.length };
+  return {
+    id: documentId,
+    deletedChunks: chunkIds.length,
+    releasedSupersession: released.length,
+  };
+}
+
+/** How many documents name this one as their replacement. Deleting it un-marks them —
+ *  a repealed law would quietly look current again — so the route warns first. */
+export async function supersedesCount(tenant: Tenant, documentId: string): Promise<number> {
+  const rows = await db()
+    .select({ id: schema.ragDocument.id })
+    .from(schema.ragDocument)
+    .where(
+      and(
+        eq(schema.ragDocument.supersededBy, documentId),
+        eq(schema.ragDocument.hfId, tenant.hfId),
+        eq(schema.ragDocument.companyId, tenant.companyId),
+      ),
+    );
+  return rows.length;
+}
+
+export interface SupersedeResult {
+  id: string;
+  title: string;
+  supersededBy: string | null;
+  supersededByTitle: string | null;
+}
+
+export class SupersedeError extends Error {}
+
+/** Mark `documentId` as replaced by `supersededBy` (or pass null to clear it).
+ *
+ *  Superseded documents stay RETRIEVABLE on purpose. "What was the VAT rate in 2023?" is a
+ *  legitimate question that only the old law answers, and silently hiding it would make
+ *  such questions unanswerable. Only `review='rejected'` removes content from retrieval
+ *  (CLAUDE.md). What supersession changes is the CITATION: every hit from this document
+ *  now carries the replacement's title and effective date, and the system prompt instructs
+ *  the model to say so — which is the whole point, since quoting a repealed tax rate as
+ *  current is the liability this corpus exists to avoid.
+ *
+ *  Ranking is deliberately untouched — that is retrieval tuning, gated on the eval set.
+ */
+export async function supersedeDocument(
+  tenant: Tenant,
+  documentId: string,
+  supersededBy: string | null,
+): Promise<SupersedeResult | null> {
+  const [doc] = await db()
+    .select({ id: schema.ragDocument.id, title: schema.ragDocument.title })
+    .from(schema.ragDocument)
+    .where(
+      and(
+        eq(schema.ragDocument.id, documentId),
+        eq(schema.ragDocument.hfId, tenant.hfId),
+        eq(schema.ragDocument.companyId, tenant.companyId),
+      ),
+    )
+    .limit(1);
+  if (!doc) return null;
+
+  let targetTitle: string | null = null;
+
+  if (supersededBy !== null) {
+    if (supersededBy === documentId) {
+      throw new SupersedeError("a document cannot supersede itself");
+    }
+    const [target] = await db()
+      .select({ id: schema.ragDocument.id, title: schema.ragDocument.title })
+      .from(schema.ragDocument)
+      .where(
+        and(
+          eq(schema.ragDocument.id, supersededBy),
+          eq(schema.ragDocument.hfId, tenant.hfId),
+          eq(schema.ragDocument.companyId, tenant.companyId),
+        ),
+      )
+      .limit(1);
+    if (!target) throw new SupersedeError("superseding document not found in this tenant");
+    targetTitle = target.title;
+
+    // Walk the successor chain from the target. Reaching this document would close a
+    // loop, and a loop makes "which one is current?" unanswerable for good.
+    const visited = new Set<string>();
+    let cursor: string | null = supersededBy;
+    while (cursor) {
+      if (cursor === documentId) {
+        throw new SupersedeError("that would create a supersession cycle");
+      }
+      if (visited.has(cursor)) break; // pre-existing loop elsewhere — do not spin on it
+      visited.add(cursor);
+      const [next] = await db()
+        .select({ next: schema.ragDocument.supersededBy })
+        .from(schema.ragDocument)
+        .where(eq(schema.ragDocument.id, cursor))
+        .limit(1);
+      cursor = next?.next ?? null;
+    }
+  }
+
+  await db()
+    .update(schema.ragDocument)
+    .set({ supersededBy, updatedAt: new Date() })
+    .where(eq(schema.ragDocument.id, documentId));
+
+  await db().insert(schema.outboxEvent).values({
+    id: newId(),
+    hfId: tenant.hfId,
+    aggregateType: "rag_document",
+    aggregateId: documentId,
+    eventType: supersededBy ? "document.superseded" : "document.supersession_cleared",
+    payload: { title: doc.title, supersededBy, supersededByTitle: targetTitle },
+  });
+
+  return { id: doc.id, title: doc.title, supersededBy, supersededByTitle: targetTitle };
 }
 
 /** Guard against deleting a document whose chunks are cited by QA pairs — the pairs

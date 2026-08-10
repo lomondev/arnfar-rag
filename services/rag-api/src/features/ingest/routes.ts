@@ -6,7 +6,14 @@ import { db } from "../../lib/db.ts";
 import { devTenant } from "../../lib/tenant.ts";
 import { ingestDocx } from "./pipeline.ts";
 import { previewDocx } from "./preview.ts";
-import { citedQaCount, deleteDocument, retroClean } from "./clean-corpus.ts";
+import {
+  citedQaCount,
+  deleteDocument,
+  retroClean,
+  supersedeDocument,
+  SupersedeError,
+  supersedesCount,
+} from "./clean-corpus.ts";
 
 async function jobStatus(id: string, hfId: string, companyId: string) {
   const [job] = await db()
@@ -68,6 +75,28 @@ export const ingestRoutes = new Elysia({ prefix: "/ingest" })
     async ({ body }) => retroClean(devTenant(), body.dryRun ?? true),
     { body: t.Object({ dryRun: t.Optional(t.Boolean()) }) },
   )
+  // Mark a document as replaced by a newer one — or pass null to clear it. The old
+  // document stays retrievable; every citation from it now names its replacement.
+  .patch(
+    "/documents/:id/supersede",
+    async ({ params, body, set }) => {
+      try {
+        const res = await supersedeDocument(devTenant(), params.id, body.supersededBy);
+        if (!res) {
+          set.status = 404;
+          return { error: "document not found" };
+        }
+        return res;
+      } catch (err) {
+        if (err instanceof SupersedeError) {
+          set.status = 422;
+          return { error: err.message };
+        }
+        throw err;
+      }
+    },
+    { body: t.Object({ supersededBy: t.Union([t.String(), t.Null()]) }) },
+  )
   // Delete a document (chunks cascade, accounts detach, storage original kept).
   // `citedQa` warns the caller how many QA pairs will lose citations — the UI surfaces
   // it in the confirm dialog before the second, forced call.
@@ -76,9 +105,18 @@ export const ingestRoutes = new Elysia({ prefix: "/ingest" })
     async ({ params, query, set }) => {
       const tenant = devTenant();
       const cited = await citedQaCount(tenant, params.id);
-      if (cited > 0 && query.force !== "1") {
+      // Deleting a replacement un-marks the documents it superseded, so a repealed source
+      // would silently read as current again. Same warn-then-force idiom as cited QA.
+      const supersedes = await supersedesCount(tenant, params.id);
+      if ((cited > 0 || supersedes > 0) && query.force !== "1") {
         set.status = 409;
-        return { error: `${cited} QA pair(s) cite this document's chunks`, citedQa: cited };
+        const reasons = [
+          cited > 0 ? `${cited} QA pair(s) cite this document's chunks` : "",
+          supersedes > 0
+            ? `${supersedes} document(s) are marked superseded by this one and would revert to looking current`
+            : "",
+        ].filter(Boolean);
+        return { error: reasons.join("; "), citedQa: cited, supersedes };
       }
       const res = await deleteDocument(tenant, params.id);
       if (!res) {
@@ -102,6 +140,7 @@ export const ingestRoutes = new Elysia({ prefix: "/ingest" })
           tenant: devTenant(),
           title: body.title,
           authority: body.authority,
+          effectiveDate: body.effectiveDate,
           license: body.license,
         });
       } catch (err) {
@@ -115,6 +154,9 @@ export const ingestRoutes = new Elysia({ prefix: "/ingest" })
         collection: t.String(),
         title: t.Optional(t.String()),
         authority: t.Optional(t.String()),
+        // ISO date. Rejected at the boundary rather than by Postgres, so a typo comes
+        // back as a validation error instead of a 500 mid-ingest.
+        effectiveDate: t.Optional(t.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
         license: t.Optional(t.String()),
       }),
     },
@@ -165,6 +207,9 @@ export const ingestRoutes = new Elysia({ prefix: "/ingest" })
         collection: schema.ragDocument.collection,
         status: schema.ragDocument.status,
         lang: schema.ragDocument.lang,
+        authority: schema.ragDocument.authority,
+        effectiveDate: schema.ragDocument.effectiveDate,
+        supersededBy: schema.ragDocument.supersededBy,
         createdAt: schema.ragDocument.createdAt,
       })
       .from(schema.ragDocument)

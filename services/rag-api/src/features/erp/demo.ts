@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 
 import { db } from "../../lib/db.ts";
+import { env } from "../../lib/env.ts";
 
 /** DEMO ERP data — a stand-in for the real Arnfar ERP database.
  *
@@ -58,6 +59,17 @@ export async function ensureDemoErp(): Promise<void> {
   if ((rows[0]?.n ?? 0) > 0) {
     // Data already seeded — but the contract views must exist regardless (they were
     // added after the first seed shipped, and CREATE OR REPLACE is idempotent).
+    await createContractViews();
+    ensured = true;
+    return;
+  }
+
+  // Opt-out (ERP_DEMO_SEED=false): an ERP schema that was emptied on purpose must stay
+  // empty. Without this, wiping the fixtures is futile — reaching this point IS the
+  // "erp.customer is empty" condition, so the next tool call would seed them straight
+  // back. Tables and contract views are still ensured, so the tools return no rows
+  // instead of failing on a missing relation.
+  if (!env.erpDemoSeed) {
     await createContractViews();
     ensured = true;
     return;

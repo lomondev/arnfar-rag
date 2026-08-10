@@ -25,6 +25,10 @@ export interface IngestInput {
   tenant: Tenant;
   title?: string;
   authority?: string;
+  /** ISO date (YYYY-MM-DD) the source takes legal effect. Surfaced in every citation
+   *  and instructed on in the system prompt — an accounting rate quoted without its
+   *  effective date is the liability CLAUDE.md warns about. */
+  effectiveDate?: string;
   license?: string;
 }
 
@@ -100,6 +104,7 @@ export async function ingestDocx(input: IngestInput): Promise<IngestResult> {
     status: "extracting",
     contentSha256: sha,
     authority: input.authority ?? null,
+    effectiveDate: input.effectiveDate ?? null,
     license: input.license ?? "internal",
     meta: {},
   });

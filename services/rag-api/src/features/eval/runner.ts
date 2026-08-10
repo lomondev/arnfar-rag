@@ -4,8 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { db } from "../../lib/db.ts";
 import { newId } from "../../lib/ids.ts";
-import { embedOne } from "../../lib/ollama.ts";
-import { segment } from "../../lib/sidecars.ts";
+import { prepareQuery } from "../search/service.ts";
 import { ragAnswer } from "./generate.ts";
 import { judgeFaithfulness } from "./judge.ts";
 import { hitRank, mean, percentile, recallAtK, reciprocalRank } from "./metrics.ts";
@@ -68,13 +67,16 @@ export async function runEval(tenant: TenantContext, cfg: EvalConfig) {
   const faith: number[] = [];
 
   for (const p of pairs) {
-    const [seg, emb] = await Promise.all([segment(p.questionLo), embedOne(p.questionLo)]);
+    // Same preparation production uses (segment + embed + glossary expansion), so the
+    // measured retriever sees the string a user's question would produce. Kept outside
+    // the timer: p95 is the DB retrieval budget, not sidecar round-trips.
+    const prepared = await prepareQuery(p.questionLo, tenant);
     const t0 = performance.now();
     const retrieved = await retrieve(cfg.retriever, {
       tenant,
       collections,
-      queryEmbedding: emb,
-      querySeg: seg.seg_text,
+      queryEmbedding: prepared.queryEmbedding,
+      querySeg: prepared.querySeg,
       k: TOP_K,
     });
     const latency = Math.round(performance.now() - t0);
@@ -117,12 +119,12 @@ export async function runEval(tenant: TenantContext, cfg: EvalConfig) {
   if (cfg.generate && cfg.adversarial.length) {
     let abstained = 0;
     for (const q of cfg.adversarial) {
-      const [seg, emb] = await Promise.all([segment(q), embedOne(q)]);
+      const prepared = await prepareQuery(q, tenant);
       const retrieved = await retrieve(cfg.retriever, {
         tenant,
         collections,
-        queryEmbedding: emb,
-        querySeg: seg.seg_text,
+        queryEmbedding: prepared.queryEmbedding,
+        querySeg: prepared.querySeg,
         k: CONTEXT_K,
       });
       const contents = await chunkContents(retrieved);

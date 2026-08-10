@@ -9,6 +9,8 @@ export interface CitationSource {
   title: string;
   authority: string | null;
   effectiveDate: string | null;
+  /** Set when this source's document has been replaced. null = current. */
+  superseded: { title: string; effectiveDate: string | null } | null;
   /** "dataset" = a verified rag_chunk; "web" = an unverified internet page;
    *  "erp" = a live read-only figure from the ERP database (point-in-time, exact). */
   origin: "dataset" | "web" | "erp";
@@ -25,6 +27,9 @@ export function toSources(hits: SearchHit[]): CitationSource[] {
     title: h.title,
     authority: h.authority,
     effectiveDate: h.effective_date,
+    superseded: h.superseded_by_title
+      ? { title: h.superseded_by_title, effectiveDate: h.superseded_by_effective_date }
+      : null,
     origin: "dataset" as const,
     url: null,
   }));
@@ -46,6 +51,7 @@ export function webToSources(
     title: r.title,
     authority: null,
     effectiveDate: null,
+    superseded: null,
     origin: "web" as const,
     url: r.url,
   }));
@@ -58,6 +64,7 @@ export function buildSystemPrompt(
   forbidden: string[],
   hasWeb = false,
   hasErp = false,
+  hasSuperseded = false,
 ): string {
   const terms = glossary.length
     ? "Approved terminology (use ONLY these Lao terms):\n" +
@@ -73,6 +80,9 @@ export function buildSystemPrompt(
     "- All LAK amounts are integers, thousands-separated, no decimals.",
     "- Quote account codes exactly as they appear in the context.",
     "- When citing law, state the authority and effective date; if a source is superseded, say so.",
+    hasSuperseded
+      ? "- A source marked ⚠ SUPERSEDED is NO LONGER IN FORCE. Never present it as the current rule: say plainly in Lao that it was replaced, name the replacement and its effective date, and answer from the replacement when it is also in the context. Quote the superseded figure only when the question is explicitly about that earlier period."
+      : "",
     terms,
     forbid,
     hasWeb
@@ -98,11 +108,15 @@ export function buildContext(sources: CitationSource[]): string {
       const auth = s.authority ? `, authority: ${s.authority}` : "";
       const eff = s.effectiveDate ? `, effective: ${s.effectiveDate}` : "";
       const web = s.origin === "web" ? ` (web: ${s.url})` : s.origin === "erp" ? " (erp: live system data)" : "";
+      // Rendered inline so the warning cannot be separated from the text it qualifies.
+      const sup = s.superseded
+        ? `, ⚠ SUPERSEDED by "${s.superseded.title}"${s.superseded.effectiveDate ? ` effective ${s.superseded.effectiveDate}` : ""}`
+        : "";
       // Web pages get a larger slice: unlike a curated chunk, the answer-bearing
       // sentence is often buried mid-page, and 700 chars cuts it off.
       const cap = s.origin === "web" ? 1600 : MAX_SOURCE_CHARS;
       const body = s.content.length > cap ? `${s.content.slice(0, cap)}…` : s.content;
-      return `[${s.n}] (${head}${auth}${eff}${web})\n${body}`;
+      return `[${s.n}] (${head}${auth}${eff}${sup}${web})\n${body}`;
     })
     .join("\n\n");
 }
