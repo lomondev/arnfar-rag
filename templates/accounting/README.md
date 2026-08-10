@@ -4,7 +4,9 @@ Ready-to-fill templates for the **accounting** domain (Phase 1). Fill them with 
 real content, then load them into the running stack. They map 1:1 to the rag-api
 endpoints and DB schema, so what you author here is exactly what the assistant retrieves.
 
-See the format guide for the wider picture: the 5 formats reused across all 25 ERP domains.
+**The canonical rules live in [`docs/DATA-FORMAT-STANDARD.md`](../../docs/DATA-FORMAT-STANDARD.md)** —
+the 5 formats, and the default way to write every content element (text, bullets, tables,
+choices, formulas, …). Read it before authoring. This file is just the loader's quick start.
 
 ## Files
 
@@ -14,6 +16,7 @@ See the format guide for the wider picture: the 5 formats reused across all 25 E
 | `glossary.csv` | F4 — glossary | `lao_term` | `POST /glossary/` |
 | `qa.jsonl` | F5 — QA pairs | `lao_qa_pair` | `POST /qa/` |
 | `knowledge/*.md` | F1 — narrative | `rag_chunk` (via ingest) | `POST /ingest/docx` |
+| `knowledge/_TEMPLATE.md` | F1 — **start here** | — | copy it, fill the ⟨…⟩ placeholders |
 | `load.ts` | loader | — | reads the three above |
 
 ## Load them
@@ -60,9 +63,26 @@ Set `RAG_API_URL` if rag-api is not on `http://localhost:7730`.
 - After loading, run `POST /qa/assign-splits` to assign train/dev/test **by document**.
 
 ### knowledge/*.md
-Front-matter (`collection, authority, effective_date, doc_type, lang, license, version`)
-+ heading-structured Lao prose. **Note:** rag-api ingests `.docx` only today — author in
-Markdown, then Save As `.docx` and upload through `/studio/review` (or `POST /ingest/docx`).
+Heading-structured Lao prose. Start from `knowledge/_TEMPLATE.md`, which contains every
+content element correctly formatted.
+
+`.md` and `.markdown` are **ingested directly** — no conversion step. Upload through
+`/studio/ingest` or:
+
+```bash
+curl -X POST http://localhost:7730/ingest/docx \
+  -F "file=@knowledge/your-file.md" -F "collection=tax" \
+  -F "title=ຫົວຂໍ້" -F "authority=ກະຊວງການເງິນ" \
+  -F "effectiveDate=2026-01-01" -F "license=internal"
+```
+
+Two things that silently cost you data:
+
+- **YAML front-matter is skipped, not read.** `collection`, `authority`, `effective_date`
+  and friends must be passed as the form fields above, or they are lost. Front-matter is
+  still the right place for author notes — it never becomes content.
+- **Never use `<!-- HTML comments -->` in the body.** The parser has no comment rule, so a
+  comment is ingested as ordinary prose and ends up in a chunk.
 
 ## Golden rules (what keeps answers correct)
 
