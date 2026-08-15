@@ -3,6 +3,7 @@ import { schema } from "@arnfar/db";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "../../lib/db.ts";
+import { env } from "../../lib/env.ts";
 import { generate } from "../../lib/ollama.ts";
 import { normalize, spellcheck } from "../../lib/sidecars.ts";
 import { search } from "../search/service.ts";
@@ -68,7 +69,7 @@ export async function checkLao(tenant: TenantContext, text: string): Promise<Lao
     }
   }
 
-  const rewrite = await rewriteSuggestion(tenant, norm.normalized, terms);
+  const rewrite = await rewriteSuggestion(tenant, norm.normalized, terms, spelling, terminology);
 
   return {
     original: text,
@@ -82,10 +83,17 @@ export async function checkLao(tenant: TenantContext, text: string): Promise<Lao
   };
 }
 
+/** Minimal-edit correction, NOT a free rewrite. An earlier "improve this text" prompt
+ *  made the model paraphrase — it swapped ເງິນສົດ (cash) for ທຶນ/ເງິນຝາກ and silently
+ *  changed the meaning of correct sentences. The rewrite now only applies the defects
+ *  the deterministic checkers found (plus obvious typos), at temperature 0, and must
+ *  return the text unchanged when there is nothing to fix. */
 async function rewriteSuggestion(
   tenant: TenantContext,
   text: string,
   terms: Array<{ termLo: string; termEn: string }>,
+  spelling: SpellingIssue[],
+  terminology: TerminologyViolation[],
 ): Promise<string> {
   // Ground the rewrite in the lao-style collection (if any) + verified glossary.
   let styleContext = "";
@@ -104,13 +112,33 @@ async function rewriteSuggestion(
     ? terms.map((t) => `${t.termLo} = ${t.termEn}`).join("; ")
     : "";
 
-  const system =
-    "You improve Lao accounting text. Rewrite in clear, standard Lao using ONLY the " +
-    "approved terminology. Keep the meaning. Output ONLY the rewritten Lao text.";
+  // The checkers' findings become explicit edit instructions — the model applies
+  // them; it does not get to decide what else to "improve".
+  const fixes: string[] = [];
+  for (const v of terminology) {
+    fixes.push(`Replace every "${v.found}" with "${v.useInstead}" (${v.termEn}).`);
+  }
+  for (const s of spelling) {
+    if (s.suggestions.length) {
+      fixes.push(`"${s.token}" looks misspelled — likely ${s.suggestions.slice(0, 3).join(" or ")}.`);
+    }
+  }
+
+  const system = [
+    "You are a careful Lao accounting copy-editor. Produce a MINIMAL correction of the text.",
+    "- Apply ONLY the required fixes listed, plus obvious spelling/spacing mistakes.",
+    "- Never replace a word with a different word of different meaning. Never change numbers, amounts, dates, or account codes.",
+    "- Pure Lao script only — never introduce Thai characters or Thai spellings.",
+    "- If nothing needs fixing, output the text EXACTLY as given.",
+    "- Output ONLY the corrected Lao text — no explanation, no quotes.",
+  ].join("\n");
+
   return generate(
-    `Approved terminology: ${glossary || "(none)"}\n` +
-      `Style reference:\n${styleContext || "(none)"}\n\n` +
-      `Rewrite this Lao text:\n${text}`,
-    { system, temperature: 0.3, maxTokens: 400 },
+    (glossary ? `Approved terminology: ${glossary}\n` : "") +
+      (styleContext ? `Style reference:\n${styleContext}\n` : "") +
+      `Required fixes:\n${fixes.length ? fixes.map((f) => `- ${f}`).join("\n") : "- (none found — change nothing unless you see an obvious typo)"}\n\n` +
+      `Text:\n${text}\n\nCorrected text:`,
+    // LaoNLP finds the defects; the Lao-tuned Gemma applies them (env.laoCorrectModel).
+    { system, temperature: 0, maxTokens: 400, model: env.laoCorrectModel },
   );
 }
