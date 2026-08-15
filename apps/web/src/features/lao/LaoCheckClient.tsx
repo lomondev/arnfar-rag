@@ -22,17 +22,26 @@ export function LaoCheckClient() {
   const [text, setText] = useState("");
   const [result, setResult] = useState<Result | null>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function check() {
     if (!text.trim()) return;
     setBusy(true);
+    setError(null);
     try {
       const res = await fetch(`${BASE}/lao/check`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ text }),
       });
-      setResult(await res.json());
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? `check failed (${res.status})`);
+      }
+      setResult((await res.json()) as Result);
+    } catch (e) {
+      setResult(null);
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -57,6 +66,12 @@ export function LaoCheckClient() {
           {busy ? "checking…" : "Check"}
         </Button>
       </div>
+
+      {error && (
+        <p role="alert" className="border-destructive/40 bg-destructive/10 text-destructive mb-3 rounded-lg border px-3 py-2 text-sm">
+          {error}
+        </p>
+      )}
 
       {result && (
         <div className="grid gap-4">

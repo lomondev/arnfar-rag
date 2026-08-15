@@ -17,6 +17,12 @@ export const env = {
   // Cross-FAMILY judge (CLAUDE.md decision 4) — qwen ≠ the Gemma-based generator.
   genModelAlt: process.env.OLLAMA_GEN_MODEL_ALT ?? "qwen3:8b",
   embedConcurrency: Number(process.env.OLLAMA_EMBED_CONCURRENCY ?? 4),
+  // Lao word/sentence correction (the /lao/check rewrite). gemma-3n-laos is a
+  // Lao-fine-tuned Gemma 3n (6.9B, 32k ctx) — it follows the minimal-edit contract
+  // exactly: applies the fixes LaoNLP + the glossary found, returns clean text
+  // unchanged, never paraphrases. Pull it with:
+  //   ollama pull gemma-3n-laos:Q4_K_M   (or set this to any installed model)
+  laoCorrectModel: process.env.OLLAMA_LAO_CORRECT_MODEL ?? "gemma-3n-laos:Q4_K_M",
   // Generation context window (prompt + answer tokens). SEA-LION v3 (Gemma2) maxes at
   // 8192. Ollama's own default is VRAM-based (4096 on an 8GB card) and when the prompt
   // overflows it context-shifts the OLDEST tokens out — i.e. the system persona,
