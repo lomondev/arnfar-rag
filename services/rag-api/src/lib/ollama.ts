@@ -114,6 +114,7 @@ export interface GenerateOptions {
   maxTokens?: number;
   json?: boolean;
   model?: string;
+  numCtx?: number;
 }
 
 export interface StreamOptions {
@@ -121,6 +122,7 @@ export interface StreamOptions {
   temperature?: number;
   maxTokens?: number;
   model?: string;
+  numCtx?: number;
   signal?: AbortSignal;
 }
 
@@ -137,7 +139,12 @@ export async function* generateStream(
     think: false,
     options: {
       temperature: opts.temperature ?? 0.2,
-      num_predict: opts.maxTokens ?? 800,
+      // Lao is token-dense (≈2 chars/token on Gemma2); 800 cut cited answers mid-sentence.
+      num_predict: opts.maxTokens ?? 1024,
+      // Without an explicit num_ctx Ollama sizes the window from VRAM (4096 on an 8GB
+      // card) and context-shifts the prompt HEAD — system prompt, glossary, first
+      // sources — out of view when the RAG prompt overflows. See env.genNumCtx.
+      num_ctx: opts.numCtx ?? env.genNumCtx,
     },
   };
   if (opts.system) body.system = opts.system;
@@ -180,6 +187,9 @@ export async function generate(prompt: string, opts: GenerateOptions = {}): Prom
     options: {
       temperature: opts.temperature ?? 0.2,
       num_predict: opts.maxTokens ?? 512,
+      // Same silent-truncation guard as generateStream — QA drafting and judging
+      // feed whole chunks in; they must never lose the head of the prompt.
+      num_ctx: opts.numCtx ?? env.genNumCtx,
     },
   };
   if (opts.system) body.system = opts.system;

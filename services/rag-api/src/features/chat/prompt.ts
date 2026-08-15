@@ -74,8 +74,12 @@ export function buildSystemPrompt(
     ? `NEVER write these incorrect forms: ${forbidden.join(", ")}.`
     : "";
   return [
-    "You are a Lao accounting assistant.",
-    "- Answer in the user's language. A Lao question gets a Lao answer. Never translate the source content.",
+    "You are an expert Lao accountant answering for accounting staff in Laos.",
+    "Language rules:",
+    "- Answer in the user's language. A Lao question gets a Lao answer in formal written register (ພາສາຂຽນທາງການ). Never translate the source content.",
+    "- Write pure Lao script only. Never mix in Thai characters or Thai spellings — Lao and Thai are different languages. Copy Lao words from the sources letter-for-letter; never respell or \"correct\" them.",
+    "- Lao digits ໐໑໒໓໔໕໖໗໘໙ = 0123456789. Lao scale words: ຮ້ອຍ = 100, ພັນ = 1,000, ໝື່ນ = 10,000, ແສນ = 100,000, ລ້ານ = 1,000,000, ຕື້ = 1,000,000,000. Read and write amounts with these exact values — confusing ໝື່ນ with ແສນ is a serious accounting error. Currency is Lao kip (ກີບ, LAK) unless a source states otherwise.",
+    "Answer rules:",
     "- Cite or abstain: every factual claim must carry a [n] citation to a numbered context source below. If the context does not support an answer, say so plainly in Lao — never invent tax rates, amounts, or account codes.",
     "- All LAK amounts are integers, thousands-separated, no decimals.",
     "- Quote account codes exactly as they appear in the context.",
@@ -99,11 +103,35 @@ export function buildSystemPrompt(
 /** Cap each source in the prompt so a large table chunk can't bloat the context
  *  and stall generation. The full text still reaches the UI via the citations frame. */
 const MAX_SOURCE_CHARS = 700;
+/** Web pages get a larger slice: unlike a curated chunk, the answer-bearing
+ *  sentence is often buried mid-page, and 700 chars cuts it off. */
+const MAX_WEB_SOURCE_CHARS = 1600;
+/** Total char budget across ALL sources. The whole prompt must tokenize under
+ *  num_ctx (8192, see lib/env.ts) or Ollama context-shifts the prompt head — the
+ *  system prompt — out of the window. Lao runs ≈2–2.5 chars/token on Gemma2's
+ *  tokenizer, so 10k chars of sources ≈ 4–5k tokens, leaving headroom for the
+ *  system prompt, history, question, and a 1024-token answer. */
+const CONTEXT_CHAR_BUDGET = 10_000;
+/** Floor per source when the budget forces scaling — below this a chunk is noise. */
+const MIN_SOURCE_CHARS = 250;
+
+/** Per-source char caps: the usual per-kind cap, scaled down proportionally when
+ *  the sum would overflow the total budget (large k + web search stacked up). */
+function sourceCaps(sources: CitationSource[]): number[] {
+  const want = sources.map((s) =>
+    Math.min(s.origin === "web" ? MAX_WEB_SOURCE_CHARS : MAX_SOURCE_CHARS, s.content.length),
+  );
+  const total = want.reduce((a, b) => a + b, 0);
+  if (total <= CONTEXT_CHAR_BUDGET) return want;
+  const scale = CONTEXT_CHAR_BUDGET / total;
+  return want.map((w) => Math.max(MIN_SOURCE_CHARS, Math.floor(w * scale)));
+}
 
 export function buildContext(sources: CitationSource[]): string {
   if (!sources.length) return "(no relevant documents found)";
+  const caps = sourceCaps(sources);
   return sources
-    .map((s) => {
+    .map((s, i) => {
       const head = s.headingPath.length ? s.headingPath.join(" › ") : s.title;
       const auth = s.authority ? `, authority: ${s.authority}` : "";
       const eff = s.effectiveDate ? `, effective: ${s.effectiveDate}` : "";
@@ -112,9 +140,7 @@ export function buildContext(sources: CitationSource[]): string {
       const sup = s.superseded
         ? `, ⚠ SUPERSEDED by "${s.superseded.title}"${s.superseded.effectiveDate ? ` effective ${s.superseded.effectiveDate}` : ""}`
         : "";
-      // Web pages get a larger slice: unlike a curated chunk, the answer-bearing
-      // sentence is often buried mid-page, and 700 chars cuts it off.
-      const cap = s.origin === "web" ? 1600 : MAX_SOURCE_CHARS;
+      const cap = caps[i]!;
       const body = s.content.length > cap ? `${s.content.slice(0, cap)}…` : s.content;
       return `[${s.n}] (${head}${auth}${eff}${sup}${web})\n${body}`;
     })

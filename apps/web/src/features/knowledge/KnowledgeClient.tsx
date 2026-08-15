@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BookOpen, Check, ChevronDown, Eye, Landmark, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { BookOpen, Check, ChevronDown, Eye, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
 
 import { Badge } from "@arnfar/ui/components/badge";
 import { Button } from "@arnfar/ui/components/button";
@@ -18,7 +18,6 @@ import { Label } from "@arnfar/ui/components/label";
 import { Textarea } from "@arnfar/ui/components/textarea";
 import { cn } from "@arnfar/ui/lib/utils";
 
-import { AccountsClient } from "@/features/dataset/AccountsClient";
 import { renderMarkdown } from "@/features/chat/markdown";
 import { useCollections } from "@/features/studio/useCollections";
 
@@ -45,13 +44,9 @@ interface Entry {
   body: string;
 }
 
-/** Chart of Accounts stays available as a built-in kind — the lao_account system
- *  (verified workflow, export invariant, pipeline auto-extraction) is untouched. */
-const COA_BUILTIN = "__coa__";
-
 export function KnowledgeClient() {
   const [kinds, setKinds] = useState<readonly Kind[]>([]);
-  const [selected, setSelected] = useState<string>(COA_BUILTIN);
+  const [selected, setSelected] = useState<string>("");
   const [entries, setEntries] = useState<readonly Entry[]>([]);
   const [loadingEntries, setLoadingEntries] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +77,7 @@ export function KnowledgeClient() {
   }, []);
 
   const loadEntries = useCallback(async (kindKey: string) => {
-    if (kindKey === COA_BUILTIN) return;
+    if (!kindKey) return;
     setLoadingEntries(true);
     try {
       const res = await fetch(`${BASE}/knowledge/entries?kind=${encodeURIComponent(kindKey)}`);
@@ -102,9 +97,15 @@ export function KnowledgeClient() {
     void loadEntries(selected);
   }, [selected, loadEntries]);
 
+  // Keep a valid selection: first kind once they load, next kind after a deletion.
+  useEffect(() => {
+    if (kinds.length === 0) return;
+    if (!kinds.some((k) => k.key === selected)) setSelected(kinds[0]!.key);
+  }, [kinds, selected]);
+
   // While any entry is still embedding, poll so the badge flips to done.
   useEffect(() => {
-    if (selected === COA_BUILTIN || entries.every((e) => e.pending === 0)) return;
+    if (!selected || entries.every((e) => e.pending === 0)) return;
     const t = window.setInterval(() => void loadEntries(selected), 2500);
     return () => window.clearInterval(t);
   }, [entries, selected, loadEntries]);
@@ -204,7 +205,8 @@ export function KnowledgeClient() {
       `${BASE}/knowledge/kinds/${deleteKind.id}?${withEntries ? "withEntries=1" : ""}${force ? "&force=1" : ""}`,
       () => {
         setDeleteKind(null);
-        setSelected(COA_BUILTIN);
+        // The keep-valid-selection effect picks the next kind once the list refreshes.
+        setSelected("");
       },
     );
 
@@ -233,19 +235,6 @@ export function KnowledgeClient() {
           </Button>
         </div>
         <nav className="mt-2 space-y-1">
-          <button
-            type="button"
-            onClick={() => setSelected(COA_BUILTIN)}
-            className={cn(
-              "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-start text-sm transition-colors",
-              selected === COA_BUILTIN ? "bg-secondary font-medium" : "hover:bg-muted text-muted-foreground",
-            )}
-          >
-            <Landmark className="size-4 shrink-0" />
-            <span className="min-w-0 flex-1 truncate">
-              ໝວດບັນຊີ <span className="text-muted-foreground text-xs">Chart of Accounts</span>
-            </span>
-          </button>
           {kinds.map((k) => (
             <div
               key={k.id}
@@ -294,8 +283,13 @@ export function KnowledgeClient() {
           </p>
         )}
 
-        {selected === COA_BUILTIN ? (
-          <AccountsClient />
+        {!selected ? (
+          <div className="border-border mt-4 rounded-xl border border-dashed px-6 py-14 text-center">
+            <p lang="lo" className="text-sm font-medium">ຍັງບໍ່ມີປະເພດຄວາມຮູ້</p>
+            <p lang="lo" className="text-muted-foreground mt-1 text-xs">
+              ສ້າງປະເພດທຳອິດ ດ້ວຍປຸ່ມ + ທາງຊ້າຍ — ເຊັ່ນ ອັດຕາອາກອນ, ຂັ້ນຕອນ, ນະໂຍບາຍ
+            </p>
+          </div>
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-2">

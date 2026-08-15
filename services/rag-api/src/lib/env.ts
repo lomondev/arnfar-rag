@@ -17,6 +17,13 @@ export const env = {
   // Cross-FAMILY judge (CLAUDE.md decision 4) — qwen ≠ the Gemma-based generator.
   genModelAlt: process.env.OLLAMA_GEN_MODEL_ALT ?? "qwen3:8b",
   embedConcurrency: Number(process.env.OLLAMA_EMBED_CONCURRENCY ?? 4),
+  // Generation context window (prompt + answer tokens). SEA-LION v3 (Gemma2) maxes at
+  // 8192. Ollama's own default is VRAM-based (4096 on an 8GB card) and when the prompt
+  // overflows it context-shifts the OLDEST tokens out — i.e. the system persona,
+  // glossary, and first retrieved sources silently vanish, which reads as "the model
+  // doesn't understand Lao". Always set this explicitly. Lower it only if generation
+  // becomes too slow on small VRAM.
+  genNumCtx: Number(process.env.OLLAMA_NUM_CTX ?? 8192),
 
   laoNlpUrl: process.env.LAO_NLP_URL ?? "http://localhost:7731",
   docxExtractorUrl: process.env.DOCX_EXTRACTOR_URL ?? "http://localhost:7732",
