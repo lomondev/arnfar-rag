@@ -21,33 +21,50 @@ const TABS = [
 export function StudioNav() {
   const pathname = usePathname();
   return (
-    <nav className="border-border bg-background sticky top-0 z-10 flex items-center gap-1 border-b px-4 py-2">
-      <Link href="/" className="mr-3 font-semibold">
-        Arnfar <span className="text-muted-foreground font-normal">Studio</span>
-      </Link>
-      {TABS.map((t) => {
-        const active = pathname === t.href;
-        return (
-          <Link
-            key={t.href}
-            href={t.href}
-            className={cn(
-              "rounded-md px-3 py-1.5 text-sm transition-colors",
-              active
-                ? "bg-secondary text-secondary-foreground font-medium"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground",
-            )}
-          >
-            {t.label}
-          </Link>
-        );
-      })}
-      <Link
-        href="/chat"
-        className="text-muted-foreground hover:text-foreground ml-auto text-sm"
-      >
-        Chat →
-      </Link>
-    </nav>
+    // The bar floats inside a transparent gutter rather than spanning the viewport:
+    // glass only reads as glass when content is visibly passing *behind* it, and a
+    // full-bleed bar hides its own edges against the window.
+    <div className="sticky top-0 z-30 h-[var(--studio-nav-h)] px-3 pt-3 pb-2 sm:px-4">
+      <nav className="glass glass-blur-lg mx-auto flex max-w-6xl items-center gap-1 rounded-2xl p-1.5">
+        <Link
+          href="/"
+          className="hover:bg-accent/50 me-1 shrink-0 rounded-xl px-2.5 py-1.5 font-semibold transition-colors"
+        >
+          Arnfar <span className="text-muted-foreground font-normal">Studio</span>
+        </Link>
+
+        {/* Ten tabs will not fit a phone. Scroll them rather than wrapping — a
+          * two-row capsule loses the segmented-control read entirely. */}
+        <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {TABS.map((t) => {
+            const active = pathname === t.href;
+            return (
+              <Link
+                key={t.href}
+                href={t.href}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "shrink-0 rounded-xl px-3 py-1.5 text-sm transition-all duration-200",
+                  active
+                    ? // The active tab is a lit pane of glass sitting on the bar —
+                      // the macOS segmented-control thumb, not a flat fill.
+                      "glass glass-strong glass-blur-sm text-foreground font-medium"
+                    : "text-muted-foreground hover:bg-accent/40 hover:text-foreground",
+                )}
+              >
+                {t.label}
+              </Link>
+            );
+          })}
+        </div>
+
+        <Link
+          href="/chat"
+          className="glass-field text-muted-foreground hover:text-foreground ms-1 shrink-0 rounded-xl px-2.5 py-1.5 text-sm transition-colors"
+        >
+          Chat →
+        </Link>
+      </nav>
+    </div>
   );
 }

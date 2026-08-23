@@ -117,6 +117,11 @@
     --chart-5: oklch(0.32 0.01 75);
     --radius: 0.75rem;
 
+    /* Height of the floating Studio bar, including its gutter. Pages that fill the
+     * viewport subtract it (Teach, Review) — a literal here drifts the moment the bar
+     * gains a row, so it is a token and the bar is pinned to it. */
+    --studio-nav-h: 4.375rem;
+
     --sidebar: oklch(0.948 0.009 91);
     --sidebar-foreground: oklch(0.32 0.006 67);
     --sidebar-primary: oklch(0.58 0.13 40);
@@ -184,5 +189,251 @@
     }
   html {
     @apply font-sans;
+    }
+}
+
+/* ============================================================================
+ * Liquid glass layer
+ * ----------------------------------------------------------------------------
+ * A translucent-material system in the spirit of macOS "Liquid Glass", tuned to
+ * the warm paper palette above rather than Apple's cool greys. Three ingredients
+ * make glass read as glass, and all three are required:
+ *
+ *   1. a *backdrop* worth refracting  — `body::before` paints an ambient mesh so
+ *      blurred surfaces have colour to pick up. Over a flat fill, backdrop-filter
+ *      is invisible and the whole effect collapses to "slightly transparent box".
+ *   2. a tinted, semi-transparent fill + `backdrop-filter: blur() saturate()`.
+ *   3. edge lighting — an outer hairline plus an inset top highlight. This is what
+ *      separates "glass" from "opacity"; without it a panel looks washed out.
+ *
+ * Tint strength is a per-element custom property (`--glass-bg`), so `glass-strong`
+ * retints without re-declaring the whole material. Custom properties resolve
+ * independently of declaration order, so the modifier works regardless of class order.
+ * ========================================================================= */
+
+:root {
+    /* Warm white glass. Chroma tracks the ~85deg neutral hue of the palette — a
+     * pure-white tint reads cold and grey against the terracotta ground. */
+    --glass-tint: 0.995 0.006 88;
+    --glass-bg: oklch(var(--glass-tint) / 0.6);
+    --glass-bg-strong: oklch(var(--glass-tint) / 0.82);
+    --glass-field-bg: oklch(var(--glass-tint) / 0.28);
+
+    /* Light mode needs a real (dark) hairline: a white edge on a near-white ground
+     * is invisible. The white lives in the inset highlight instead. */
+    --glass-border: oklch(0.55 0.012 80 / 0.16);
+    --glass-highlight: oklch(1 0 0 / 0.85);
+    --glass-lowlight: oklch(0.5 0.012 80 / 0.05);
+    --glass-sheen: oklch(1 0 0 / 0.4);
+
+    --glass-blur: 20px;
+    --glass-saturate: 180%;
+    --glass-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+
+    --glass-shadow:
+        0 1px 2px oklch(0.3 0.02 70 / 0.05), 0 10px 30px -12px oklch(0.3 0.02 70 / 0.18);
+    --glass-shadow-lifted:
+        0 2px 4px oklch(0.3 0.02 70 / 0.06), 0 18px 44px -14px oklch(0.3 0.02 70 / 0.26);
+
+    /* Ambient mesh — four soft blooms on the terracotta/amber axis, plus one cool
+     * counterweight so the field is not a single warm wash. This is what backdrop-filter
+     * has to bite on: too faint and every glass surface flattens into a plain white card,
+     * so it is pushed just past subliminal rather than kept invisible. */
+    --ambient-mesh:
+        radial-gradient(1200px 820px at 6% -14%, oklch(0.7 0.12 42 / 0.2), transparent 60%),
+        radial-gradient(980px 720px at 94% -6%, oklch(0.78 0.09 88 / 0.22), transparent 56%),
+        radial-gradient(1100px 950px at 58% 114%, oklch(0.68 0.1 28 / 0.16), transparent 60%),
+        radial-gradient(760px 620px at 78% 62%, oklch(0.72 0.05 250 / 0.1), transparent 62%);
+    --ambient-grain-opacity: 0.55;
+}
+
+.dark {
+    /* Dark glass is a *lightened* film over a dark ground, not a darkened one —
+     * hence a light tint at low alpha rather than a dark tint at high alpha. */
+    --glass-tint: 0.74 0.01 80;
+    --glass-bg: oklch(var(--glass-tint) / 0.16);
+    --glass-bg-strong: oklch(var(--glass-tint) / 0.26);
+    /* Dark fields recess by darkening, not by lightening — a light film reads raised. */
+    --glass-field-bg: oklch(0 0 0 / 0.18);
+
+    --glass-border: oklch(1 0 0 / 0.1);
+    --glass-highlight: oklch(1 0 0 / 0.14);
+    --glass-lowlight: oklch(0 0 0 / 0.22);
+    --glass-sheen: oklch(1 0 0 / 0.07);
+
+    --glass-saturate: 150%;
+
+    --glass-shadow: 0 1px 2px oklch(0 0 0 / 0.3), 0 12px 34px -14px oklch(0 0 0 / 0.6);
+    --glass-shadow-lifted: 0 2px 6px oklch(0 0 0 / 0.34), 0 22px 52px -16px oklch(0 0 0 / 0.7);
+
+    /* Dark needs *more* ambient light, not less. The blooms are the only thing keeping
+     * a translucent panel distinguishable from the ground it floats on — at the light
+     * mode's alphas the whole surface collapses to one flat charcoal. */
+    --ambient-mesh:
+        radial-gradient(1200px 820px at 6% -14%, oklch(0.62 0.14 42 / 0.24), transparent 58%),
+        radial-gradient(980px 720px at 94% -6%, oklch(0.5 0.09 268 / 0.22), transparent 56%),
+        radial-gradient(1100px 950px at 58% 114%, oklch(0.52 0.11 28 / 0.2), transparent 58%),
+        radial-gradient(820px 640px at 30% 46%, oklch(0.55 0.06 88 / 0.1), transparent 62%);
+    --ambient-grain-opacity: 0.4;
+}
+
+/*
+ * Accessibility + capability fallbacks. Both paths make the material opaque rather
+ * than merely less blurred — a translucent panel with no blur behind it is the one
+ * state where Lao text on a busy backdrop genuinely stops being readable.
+ */
+@media (prefers-reduced-transparency: reduce) {
+    :root,
+    .dark {
+        --glass-bg: var(--card);
+        --glass-bg-strong: var(--card);
+        --glass-field-bg: var(--background);
+        --glass-sheen: transparent;
+        --glass-filter: none;
+        --ambient-mesh: none;
+        --ambient-grain-opacity: 0;
+    }
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    :root,
+    .dark {
+        --glass-bg: var(--card);
+        --glass-bg-strong: var(--card);
+        --glass-field-bg: var(--background);
+        --glass-filter: none;
+    }
+}
+
+/* The material itself. Deliberately does NOT set `position` or `border-radius` —
+ * it is applied to fixed, sticky and static elements alike, and every caller picks
+ * its own radius (glass wants a larger radius than the token default). */
+@utility glass {
+    background-color: var(--glass-bg);
+    background-image:
+        linear-gradient(180deg, var(--glass-sheen), transparent 42%),
+        radial-gradient(130% 80% at 50% -25%, var(--glass-sheen), transparent 58%);
+    -webkit-backdrop-filter: var(--glass-filter);
+    backdrop-filter: var(--glass-filter);
+    border: 1px solid var(--glass-border);
+    box-shadow:
+        var(--glass-shadow),
+        inset 0 1px 0 0 var(--glass-highlight),
+        inset 0 -1px 0 0 var(--glass-lowlight);
+}
+
+/* Tint modifier — for anything holding body text or dense tables, where legibility
+ * outranks translucency. */
+@utility glass-strong {
+    --glass-bg: var(--glass-bg-strong);
+}
+
+@utility glass-blur-sm {
+    --glass-blur: 10px;
+}
+
+@utility glass-blur-lg {
+    --glass-blur: 34px;
+}
+
+/* Borderless variant for surfaces that own a full edge of the viewport (sidebar,
+ * source panel) — a ring all the way round a flush panel reads as a mistake. */
+@utility glass-flush {
+    border: 0;
+    box-shadow:
+        var(--glass-shadow),
+        inset 0 1px 0 0 var(--glass-highlight);
+}
+
+/* Hover lift. Pointer-only: on touch there is no hover state to leave, so the
+ * transform would stick after a tap. */
+@utility glass-raise {
+    transition:
+        box-shadow 220ms cubic-bezier(0.32, 0.72, 0, 1),
+        transform 220ms cubic-bezier(0.32, 0.72, 0, 1),
+        background-color 220ms ease;
+
+    @media (hover: hover) {
+        &:hover {
+            box-shadow:
+                var(--glass-shadow-lifted),
+                inset 0 1px 0 0 var(--glass-highlight),
+                inset 0 -1px 0 0 var(--glass-lowlight);
+            transform: translateY(-2px);
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        transition: box-shadow 220ms ease;
+
+        &:hover {
+            transform: none;
+        }
+    }
+}
+
+/* Edge lighting only — for rails and dividers that must not blur (blurring a 1px
+ * strip costs a full-viewport backdrop pass and shows nothing for it). */
+@utility glass-edge {
+    border-color: var(--glass-border);
+    box-shadow: inset 0 1px 0 0 var(--glass-highlight);
+}
+
+/* Inputs sit *inside* glass, so they get a recessed treatment instead of a raised
+ * one: the shadow points inward and there is no backdrop blur (nesting blur inside
+ * blur compounds into mush and costs a second backdrop pass). */
+@utility glass-field {
+    background-color: var(--glass-field-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: inset 0 1px 2px var(--glass-lowlight);
+}
+
+/* The backdrop everything else refracts. `fixed` so it does not scroll — glass
+ * should feel like a pane held over the window, not a sticker on the page. */
+@utility ambient-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image: var(--ambient-mesh);
+
+    /* Film grain. Stops the wide low-alpha blooms from banding on 8-bit displays,
+     * and gives the blur a surface texture to bite on. */
+    &::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        opacity: var(--ambient-grain-opacity);
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.16'/%3E%3C/svg%3E");
+        mix-blend-mode: overlay;
+    }
+}
+
+@layer base {
+    /* Thin, translucent scrollbars — a chunky opaque bar cuts straight through the
+     * illusion on a glass panel. */
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--glass-border) transparent;
+    }
+
+    *::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+    }
+
+    *::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    *::-webkit-scrollbar-thumb {
+        background-color: var(--glass-border);
+        border: 3px solid transparent;
+        background-clip: content-box;
+        border-radius: 999px;
+    }
+
+    *::-webkit-scrollbar-thumb:hover {
+        background-color: var(--muted-foreground);
     }
 }

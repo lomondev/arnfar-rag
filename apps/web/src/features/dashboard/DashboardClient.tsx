@@ -34,7 +34,7 @@ interface Gaps {
 
 function Stat({ label, value, sub, href }: { label: string; value: string; sub?: string; href?: string }) {
   const body = (
-    <div className="border-border bg-card hover:border-ring/40 rounded-xl border p-4 transition-colors">
+    <div className="glass glass-strong glass-raise hover:border-ring/40 rounded-2xl p-4">
       <p className="text-muted-foreground text-xs">{label}</p>
       <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
       {sub && <p className="text-muted-foreground mt-0.5 text-xs">{sub}</p>}
@@ -101,7 +101,7 @@ export function DashboardClient() {
       </div>
 
       {/* review funnel */}
-      <div className="border-border bg-card mt-4 rounded-xl border p-4">
+      <div className="glass glass-strong mt-4 rounded-2xl p-4">
         <div className="flex items-center justify-between text-sm">
           <span className="font-medium">Review funnel</span>
           <Link href="/studio/review" className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs">
@@ -134,7 +134,7 @@ export function DashboardClient() {
 
       {/* gaps + activity */}
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <div className="border-border bg-card rounded-xl border p-4">
+        <div className="glass glass-strong rounded-2xl p-4">
           <div className="flex items-center gap-2 text-sm font-medium">
             <MessageCircleQuestion className="size-4 text-amber-600" />
             <span lang="lo">ຄຳຖາມທີ່ຕອບບໍ່ໄດ້ · gaps</span>
@@ -170,7 +170,7 @@ export function DashboardClient() {
           )}
         </div>
 
-        <div className="border-border bg-card rounded-xl border p-4">
+        <div className="glass glass-strong rounded-2xl p-4">
           <p className="text-sm font-medium">Recent activity</p>
           {ov.activity.length === 0 ? (
             <p className="text-muted-foreground mt-3 text-sm">No events yet</p>

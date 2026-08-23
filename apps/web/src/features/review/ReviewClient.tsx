@@ -128,7 +128,7 @@ export function ReviewClient() {
   }, {});
 
   return (
-    <div className="flex h-[calc(100vh-3rem)] flex-col">
+    <div className="flex h-[calc(100dvh-var(--studio-nav-h))] flex-col">
       <header className="border-border flex flex-wrap items-center gap-3 border-b px-4 py-2">
         <strong>Review</strong>
         <Select value={docId ?? ""} onChange={(e) => setDocId(e.target.value)}>

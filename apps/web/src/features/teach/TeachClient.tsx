@@ -294,7 +294,7 @@ export function TeachClient() {
     (railIdx !== null ? messages[railIdx]?.sources : undefined) ?? [];
 
   return (
-    <div className="flex h-[calc(100dvh-3.1rem)] overflow-hidden">
+    <div className="flex h-[calc(100dvh-var(--studio-nav-h))] overflow-hidden">
       {/* ── Teach column ─────────────────────────────────────────────── */}
       <main className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-11 shrink-0 items-center gap-2 border-b px-4">
@@ -476,7 +476,7 @@ export function TeachClient() {
               e.preventDefault();
               void send(input);
             }}
-            className="border-border bg-card focus-within:border-ring/50 mx-auto w-full max-w-3xl rounded-2xl border shadow-sm transition-shadow focus-within:shadow-md"
+            className="glass glass-strong glass-blur-lg focus-within:border-ring/50 focus-within:ring-ring/25 mx-auto w-full max-w-3xl rounded-3xl transition-[box-shadow,border-color] focus-within:ring-4"
           >
             <textarea
               ref={composerRef}
@@ -566,7 +566,7 @@ export function TeachClient() {
       </main>
 
       {/* ── Sources rail — persistent, so the curator checks BEFORE approving ── */}
-      <aside className="border-border bg-card hidden w-[360px] shrink-0 flex-col border-s lg:flex">
+      <aside className="glass glass-strong glass-flush glass-blur-lg hidden w-[360px] shrink-0 flex-col lg:flex">
         <div className="border-border flex h-11 shrink-0 items-center gap-2 border-b px-4">
           <span className="text-sm font-medium">{t.sources}</span>
           {railSources.length > 0 && (

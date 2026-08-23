@@ -295,7 +295,7 @@ export function IngestClient() {
       )}
 
       {/* ══ 1 · Upload & preview ══════════════════════════════════════ */}
-      <section className="border-border bg-card mt-4 rounded-xl border p-5">
+      <section className="glass glass-strong mt-4 rounded-2xl p-5">
         <h2 className="text-sm font-semibold">1 · ອັບໂຫຼດ ແລະ ກວດກ່ອນ <span className="text-muted-foreground font-normal">upload &amp; preview (dry-run)</span></h2>
 
         {!file && (
@@ -339,7 +339,7 @@ export function IngestClient() {
             after the preview. Title is REQUIRED: it becomes the document title users
             see in Review, citations, and the Knowledge menus. */}
         {file && !job && (
-          <div className="border-border bg-muted/30 mt-4 grid gap-3 rounded-lg border p-3 sm:grid-cols-3">
+          <div className="glass-field mt-4 grid gap-3 rounded-xl p-3 sm:grid-cols-3">
             <div className="sm:col-span-2">
               <Label className="text-xs font-medium">ຫົວຂໍ້ຄວາມຮູ້ · knowledge title *</Label>
               <Input
@@ -417,7 +417,7 @@ export function IngestClient() {
                     zero-width: {preview.defectTotals.zeroWidth} · doubled marks: {preview.defectTotals.doubledMarks} · broken syllables: {preview.defectTotals.spaceBeforeMark} — ຕົ້ນສະບັບ (content) ບໍ່ຖືກແຕະຕ້ອງ
                   </p>
                   {defectSamples.map((c) => (
-                    <div key={c.seq} className="border-border/60 mt-2 rounded-md border bg-background/60 px-2.5 py-1.5 text-xs">
+                    <div key={c.seq} className="glass-field mt-2 rounded-lg px-2.5 py-1.5 text-xs">
                       <p lang="lo" className="text-destructive/80 line-through decoration-destructive/40">{c.excerpt.slice(0, 100)}</p>
                       <p lang="lo" className="text-emerald-700 dark:text-emerald-400">{c.cleanedExcerpt?.slice(0, 100)}</p>
                     </div>
@@ -503,7 +503,7 @@ export function IngestClient() {
       </section>
 
       {/* ══ 2 · Documents ═════════════════════════════════════════════ */}
-      <section className="border-border bg-card mt-4 rounded-xl border p-5">
+      <section className="glass glass-strong mt-4 rounded-2xl p-5">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold">2 · ເອກະສານ <span className="text-muted-foreground font-normal">documents</span></h2>
           <Button size="xs" variant="ghost" onClick={() => void refreshDocs()} className="text-muted-foreground ms-auto gap-1">
@@ -544,7 +544,7 @@ export function IngestClient() {
       </section>
 
       {/* ══ 3 · Corpus cleaning (retro) ═══════════════════════════════ */}
-      <section className="border-border bg-card mt-4 rounded-xl border p-5">
+      <section className="glass glass-strong mt-4 rounded-2xl p-5">
         <h2 className="text-sm font-semibold">3 · ທຳຄວາມສະອາດ corpus ເກົ່າ <span className="text-muted-foreground font-normal">retro-clean existing chunks</span></h2>
         <p lang="lo" className="text-muted-foreground mt-1 text-xs">
           ແກ້ ສະຫຼະຊ້ຳ / ພະຍາງຂາດ / zero-width ໃນ chunks ທີ່ນຳເຂົ້າກ່ອນມີດ່ານທຳຄວາມສະອາດ. ແກ້ສະເພາະ content_norm + content_seg ແລ້ວ embed ຄືນ — ຕົ້ນສະບັບບໍ່ຖືກແຕະ.

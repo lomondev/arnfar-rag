@@ -7,7 +7,10 @@ function Card({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="card"
       className={cn(
-        "bg-card text-card-foreground flex flex-col gap-4 rounded-xl border p-4 shadow-sm",
+        // `glass` supplies the border and box-shadow, so no `border`/`shadow-*` here —
+        // a competing utility would race it. `glass-strong` (not the default tint):
+        // cards hold body text and dense tables, and legibility outranks translucency.
+        "glass glass-strong text-card-foreground flex flex-col gap-4 rounded-2xl p-4",
         className,
       )}
       {...props}

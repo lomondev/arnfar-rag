@@ -450,26 +450,28 @@ export function ChatClient() {
   const groups = useMemo(() => groupByRecency(groupList, Date.now()), [groupList]);
 
   return (
-    <div className="bg-background text-foreground flex h-screen overflow-hidden">
+    <div className="text-foreground flex h-screen overflow-hidden">
       {/* Dismiss layer — only reachable on narrow viewports, where the sidebar overlays. */}
       {sidebarOpen && (
         <button
           type="button"
           aria-label="Close sidebar"
           onClick={() => setSidebarOpen(false)}
-          className="fixed inset-0 z-30 bg-black/30 md:hidden"
+          className="fixed inset-0 z-30 bg-black/25 backdrop-blur-[2px] md:hidden"
         />
       )}
 
       <aside
         className={cn(
-          "border-sidebar-border bg-sidebar text-sidebar-foreground z-40 w-[264px] shrink-0 flex-col border-e",
+          // glass-flush, not glass: this panel owns the window's left edge, and a ring
+          // all the way round a flush surface reads as a floating card that failed to float.
+          "glass glass-flush glass-blur-lg text-sidebar-foreground z-40 w-[264px] shrink-0 flex-col",
           "max-md:fixed max-md:inset-y-0 max-md:start-0",
           sidebarOpen ? "flex" : "hidden",
         )}
       >
         <div className="flex items-center gap-2 px-3 py-3">
-          <span className="bg-sidebar-primary text-sidebar-primary-foreground flex size-7 items-center justify-center rounded-md text-sm font-bold">
+          <span className="bg-sidebar-primary text-sidebar-primary-foreground shadow-primary/25 flex size-7 items-center justify-center rounded-xl text-sm font-bold shadow-lg">
             ✦
           </span>
           <span className="text-sm font-semibold">Arnfar</span>
@@ -489,7 +491,7 @@ export function ChatClient() {
             variant="outline"
             size="lg"
             onClick={startNewChat}
-            className="w-full justify-start gap-2"
+            className="w-full justify-start gap-2 rounded-xl"
           >
             <Plus className="text-primary" />
             {t.newChat}
@@ -540,7 +542,7 @@ export function ChatClient() {
           ))}
         </nav>
 
-        <div className="border-sidebar-border flex items-center gap-1 border-t px-3 py-2.5">
+        <div className="glass-edge flex items-center gap-1 border-t px-3 py-2.5">
           <Button
             size="icon-sm"
             variant="ghost"
@@ -561,30 +563,43 @@ export function ChatClient() {
         </div>
       </aside>
 
-      <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-12 shrink-0 items-center gap-2 px-3">
-          {!sidebarOpen && (
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              onClick={() => setSidebarOpen(true)}
-              title="Open sidebar"
-              className="text-muted-foreground"
-            >
-              <PanelLeft />
-            </Button>
-          )}
-          <span className="text-sm font-medium">Arnfar Chat</span>
-          <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-[0.7rem]">
-            {modelLabel} · {t.subtitle}
-          </span>
+      <main className="relative flex min-w-0 flex-1 flex-col">
+        {/* Absolute, not in-flow: the thread scrolls *underneath* the bar, which is the
+          * whole point of a glass toolbar. Its height is fixed, so the mask offset on the
+          * scroll container below can be a constant. */}
+        <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center gap-2 px-3 py-2.5">
+          <div className="glass glass-blur-lg pointer-events-auto flex h-9 items-center gap-2 rounded-2xl ps-1.5 pe-3">
+            {!sidebarOpen && (
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                onClick={() => setSidebarOpen(true)}
+                title="Open sidebar"
+                className="text-muted-foreground"
+              >
+                <PanelLeft />
+              </Button>
+            )}
+            <span className="ps-1.5 text-sm font-medium">Arnfar Chat</span>
+            <span className="glass-field text-muted-foreground rounded-full px-2 py-0.5 text-[0.7rem]">
+              {modelLabel} · {t.subtitle}
+            </span>
+          </div>
         </header>
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-3xl px-6 py-6">
+        {/*
+         * Masked rather than covered by a gradient overlay: the fade has to work over
+         * the ambient mesh, and a solid-colour scrim would only match a flat backdrop.
+         * The 3.5rem top stop clears the floating header exactly.
+         */}
+        <div
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto [mask-image:linear-gradient(to_bottom,transparent_0,black_3.5rem,black_calc(100%-0.75rem),transparent_100%)]"
+        >
+          <div className="mx-auto w-full max-w-3xl px-6 pt-16 pb-6">
             {messages.length === 0 ? (
               <div className="flex min-h-[50vh] flex-col items-center justify-center text-center">
-                <span className="bg-primary text-primary-foreground mb-4 flex size-11 items-center justify-center rounded-xl text-lg">
+                <span className="bg-primary text-primary-foreground shadow-primary/30 mb-4 flex size-12 items-center justify-center rounded-2xl text-lg shadow-xl">
                   ✦
                 </span>
                 <p lang="lo" className="text-xl font-semibold">
@@ -598,7 +613,7 @@ export function ChatClient() {
                   <div key={i} className="mb-6 flex justify-end">
                     <div
                       lang="lo"
-                      className="bg-chat-user text-chat-user-foreground max-w-[85%] rounded-2xl rounded-ee-md px-4 py-2.5 text-[1.02rem] leading-[1.7] whitespace-pre-wrap"
+                      className="bg-chat-user/65 text-chat-user-foreground glass-edge max-w-[85%] rounded-2xl rounded-ee-md border px-4 py-2.5 text-[1.02rem] leading-[1.7] whitespace-pre-wrap backdrop-blur-xl"
                     >
                       {msg.content}
                     </div>
@@ -676,7 +691,7 @@ export function ChatClient() {
               e.preventDefault();
               void send(input);
             }}
-            className="border-border bg-card focus-within:border-ring/50 mx-auto w-full max-w-3xl rounded-2xl border shadow-sm transition-shadow focus-within:shadow-md"
+            className="glass glass-strong glass-blur-lg focus-within:border-ring/50 focus-within:ring-ring/25 mx-auto w-full max-w-3xl rounded-3xl transition-[box-shadow,border-color] focus-within:ring-4"
           >
             <textarea
               ref={composerRef}
@@ -769,12 +784,18 @@ export function ChatClient() {
                   size="icon"
                   onClick={() => abortRef.current?.abort()}
                   title={t.stop}
-                  className="bg-foreground text-background"
+                  className="bg-foreground text-background rounded-full"
                 >
                   <Square className="fill-current" />
                 </Button>
               ) : (
-                <Button type="submit" size="icon" disabled={!input.trim()} title={t.send}>
+                <Button
+                  type="submit"
+                  size="icon"
+                  disabled={!input.trim()}
+                  title={t.send}
+                  className="shadow-primary/25 rounded-full shadow-md"
+                >
                   <ArrowUp />
                 </Button>
               )}
@@ -784,8 +805,8 @@ export function ChatClient() {
       </main>
 
       {panel && (
-        <aside className="border-border bg-card flex w-[380px] shrink-0 flex-col border-s max-lg:fixed max-lg:inset-y-0 max-lg:end-0 max-lg:z-40 max-lg:shadow-xl">
-          <div className="border-border flex items-center gap-2 border-b px-4 py-3">
+        <aside className="glass glass-strong glass-flush glass-blur-lg flex w-[380px] shrink-0 flex-col max-lg:fixed max-lg:inset-y-0 max-lg:end-0 max-lg:z-40">
+          <div className="glass-edge flex items-center gap-2 border-b px-4 py-3">
             <span className="bg-citation/15 text-citation flex size-5 items-center justify-center rounded text-xs font-semibold">
               {panel.n}
             </span>

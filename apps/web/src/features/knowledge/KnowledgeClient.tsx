@@ -354,7 +354,7 @@ export function KnowledgeClient() {
             ) : (
               <div className="mt-3 space-y-2">
                 {visibleEntries.map((e) => (
-                  <div key={e.id} className="border-border bg-card group rounded-xl border px-4 py-3">
+                  <div key={e.id} className="glass glass-strong group rounded-2xl px-4 py-3">
                     <div className="flex items-center gap-2">
                       <button
                         type="button"

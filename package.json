@@ -20,6 +20,7 @@
     "typecheck": "bun run --filter '*' typecheck",
     "lint": "bun run --filter '*' lint",
     "check:templates": "bun run scripts/check-templates.ts",
+    "seed": "bun run seed/load.ts",
     "db:generate": "bun --env-file=.env run --filter '@arnfar/db' generate",
     "db:migrate": "bun --env-file=.env run --filter '@arnfar/db' migrate",
     "db:index:hnsw": "bun --env-file=.env run --filter '@arnfar/db' index:hnsw",

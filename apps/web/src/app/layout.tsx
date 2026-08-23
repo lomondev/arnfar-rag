@@ -36,7 +36,16 @@ export default function RootLayout({
         <style dangerouslySetInnerHTML={{ __html: phetsarathFontFaceCss() }} />
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
-      <body>{children}</body>
+      <body>
+        {/*
+         * The backdrop every glass surface refracts. Without it, `backdrop-filter`
+         * has a flat fill to blur and the whole material reads as plain opacity.
+         * Rendered once here rather than per-page so /chat and /studio share one
+         * continuous ground. aria-hidden: it is pure atmosphere.
+         */}
+        <div className="ambient-backdrop" aria-hidden="true" />
+        {children}
+      </body>
     </html>
   );
 }

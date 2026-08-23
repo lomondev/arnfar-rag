@@ -1,0 +1,97 @@
+code,name_lo,name_en,parent_code,class,normal_balance,statement
+10,ທຶນຂອງເຈົ້າຂອງ,Owner's equity,,equity,credit,BS
+101,ທຶນຈົດທະບຽນ,Registered capital,10,equity,credit,BS
+104,ສ່ວນເກີນມູນຄ່າຮຸ້ນ,Share premium,10,equity,credit,BS
+106,ທຶນສຳຮອງຕາມກົດໝາຍ,Legal reserve,10,equity,credit,BS
+11,ກຳໄລສະສົມ,Retained earnings,,equity,credit,BS
+12,ຜົນໄດ້ຮັບປະຈຳງວດ,Result for the period,,equity,credit,BS
+14,ເງິນສຳຮອງຄວາມສ່ຽງ ແລະ ຄ່າໃຊ້ຈ່າຍ,Provisions for risks and charges,,liability,credit,BS
+16,ເງິນກູ້ຢືມໄລຍະຍາວ,Long-term borrowings,,liability,credit,BS
+164,ເງິນກູ້ຢືມຈາກທະນາຄານ ໄລຍະຍາວ,Long-term bank loans,16,liability,credit,BS
+168,ໜີ້ສິນໄລຍະຍາວອື່ນ,Other long-term liabilities,16,liability,credit,BS
+20,ຊັບສິນຄົງທີ່ບໍ່ມີຕົວຕົນ,Intangible fixed assets,,asset,debit,BS
+205,ຊອບແວ ແລະ ໃບອະນຸຍາດ,Software and licences,20,asset,debit,BS
+208,ຄ່າຄວາມນິຍົມ,Goodwill,20,asset,debit,BS
+21,ຊັບສິນຄົງທີ່ມີຕົວຕົນ,Tangible fixed assets,,asset,debit,BS
+211,ດິນ,Land,21,asset,debit,BS
+213,ອາຄານ ແລະ ສິ່ງປຸກສ້າງ,Buildings and structures,21,asset,debit,BS
+215,ເຄື່ອງຈັກ ແລະ ອຸປະກອນ,Machinery and equipment,21,asset,debit,BS
+218,ພາຫະນະຂົນສົ່ງ,Vehicles,21,asset,debit,BS
+2184,ເຄື່ອງເຮືອນ ແລະ ອຸປະກອນສຳນັກງານ,Furniture and office equipment,21,asset,debit,BS
+26,ການລົງທຶນໄລຍະຍາວ,Long-term investments,,asset,debit,BS
+28,ຄ່າຫຼູ້ຍຫ້ຽນສະສົມ,Accumulated depreciation,,asset,credit,BS
+2813,ຄ່າຫຼູ້ຍຫ້ຽນສະສົມ ອາຄານ,Accumulated depreciation — buildings,28,asset,credit,BS
+2815,ຄ່າຫຼູ້ຍຫ້ຽນສະສົມ ເຄື່ອງຈັກ,Accumulated depreciation — machinery,28,asset,credit,BS
+2818,ຄ່າຫຼູ້ຍຫ້ຽນສະສົມ ພາຫະນະ,Accumulated depreciation — vehicles,28,asset,credit,BS
+31,ວັດຖຸດິບ,Raw materials,,asset,debit,BS
+32,ວັດຖຸສິ້ນເປືອງ,Consumable supplies,,asset,debit,BS
+33,ວຽກລະຫວ່າງຜະລິດ,Work in progress,,asset,debit,BS
+35,ສິນຄ້າສຳເລັດຮູບ,Finished goods,,asset,debit,BS
+37,ສິນຄ້າຊື້ມາເພື່ອຂາຍ,Merchandise for resale,,asset,debit,BS
+39,ຄ່າເຜື່ອສິນຄ້າເສື່ອມຄຸນນະພາບ,Allowance for inventory obsolescence,,asset,credit,BS
+40,ເຈົ້າໜີ້,Payables,,liability,credit,BS
+401,ເຈົ້າໜີ້ການຄ້າ,Trade payables,40,liability,credit,BS
+408,ເຈົ້າໜີ້ອື່ນ ຄ້າງຈ່າຍ,Other accrued payables,40,liability,credit,BS
+409,ເງິນລ່ວງໜ້າຈ່າຍໃຫ້ຜູ້ສະໜອງ,Advances to suppliers,40,asset,debit,BS
+41,ລູກໜີ້,Receivables,,asset,debit,BS
+411,ລູກໜີ້ການຄ້າ,Trade receivables,41,asset,debit,BS
+416,ລູກໜີ້ສົງໄສຈະສູນ,Doubtful receivables,41,asset,debit,BS
+419,ເງິນລ່ວງໜ້າຮັບຈາກລູກຄ້າ,Customer advances received,41,liability,credit,BS
+42,ພະນັກງານ,Personnel,,liability,credit,BS
+421,ໜີ້ຕ້ອງຈ່າຍ ພະນັກງານ,Payroll payable,42,liability,credit,BS
+425,ເງິນລ່ວງໜ້າຈ່າຍໃຫ້ພະນັກງານ,Advances to employees,42,asset,debit,BS
+43,ອົງການປະກັນສັງຄົມ ແລະ ອາກອນ,Social security and tax bodies,,liability,credit,BS
+431,ເງິນປະກັນສັງຄົມຕ້ອງຈ່າຍ,Social security payable,43,liability,credit,BS
+433,ອາກອນມູນຄ່າເພີ່ມ,Value-added tax,43,liability,credit,BS
+4331,ອາກອນມູນຄ່າເພີ່ມຂາຍອອກ,Output VAT,433,liability,credit,BS
+4332,ອາກອນມູນຄ່າເພີ່ມຊື້ເຂົ້າ,Input VAT,433,asset,debit,BS
+4333,ອາກອນມູນຄ່າເພີ່ມຕ້ອງຊຳລະສຸດທິ,Net VAT payable,433,liability,credit,BS
+4341,ອາກອນກຳໄລຕ້ອງຈ່າຍ,Profit tax payable,43,liability,credit,BS
+4342,ອາກອນລາຍໄດ້ຫັກຈາກເງິນເດືອນ,Payroll income tax withheld,43,liability,credit,BS
+44,ຄ່າໃຊ້ຈ່າຍຈ່າຍລ່ວງໜ້າ,Prepaid expenses,,asset,debit,BS
+47,ບັນຊີພັກ ລໍຖ້າຈັດປະເພດ,Suspense account,,asset,debit,BS
+49,ຄ່າເຜື່ອໜີ້ສົງໄສຈະສູນ,Allowance for doubtful debts,,asset,credit,BS
+51,ເງິນຝາກທະນາຄານ,Bank deposits,,asset,debit,BS
+511,ເງິນຝາກທະນາຄານ ສະກຸນກີບ,Bank account — LAK,51,asset,debit,BS
+512,ເງິນຝາກທະນາຄານ ສະກຸນຕ່າງປະເທດ,Bank account — foreign currency,51,asset,debit,BS
+53,ເງິນສົດ,Cash,,asset,debit,BS
+531,ເງິນສົດໃນມື,Cash on hand,53,asset,debit,BS
+532,ເງິນສົດຍ່ອຍ,Petty cash,53,asset,debit,BS
+58,ເງິນໂອນລະຫວ່າງບັນຊີ,Internal transfers,,asset,debit,BS
+60,ຕົ້ນທຶນຊື້,Cost of purchases,,expense,debit,PL
+601,ຕົ້ນທຶນວັດຖຸດິບທີ່ໃຊ້ໄປ,Cost of raw materials used,60,expense,debit,PL
+607,ຕົ້ນທຶນສິນຄ້າຂາຍ,Cost of goods sold,60,expense,debit,PL
+61,ຄ່າບໍລິການພາຍນອກ,External services,,expense,debit,PL
+613,ຄ່າເຊົ່າ,Rent,61,expense,debit,PL
+615,ຄ່າສ້ອມແປງ ແລະ ບຳລຸງຮັກສາ,Repairs and maintenance,61,expense,debit,PL
+616,ຄ່າປະກັນໄພ,Insurance,61,expense,debit,PL
+62,ຄ່າໃຊ້ຈ່າຍບໍລິຫານອື່ນ,Other administrative expenses,,expense,debit,PL
+623,ຄ່າໂຄສະນາ,Advertising,62,expense,debit,PL
+625,ຄ່າເດີນທາງ ແລະ ຮັບຮອງ,Travel and entertainment,62,expense,debit,PL
+626,ຄ່າໂທລະຄົມ ແລະ ອິນເຕີເນັດ,Telecom and internet,62,expense,debit,PL
+627,ຄ່າທຳນຽມທະນາຄານ,Bank charges,62,expense,debit,PL
+628,ຄ່ານໍ້າ ແລະ ຄ່າໄຟຟ້າ,Utilities,62,expense,debit,PL
+63,ອາກອນ ແລະ ຄ່າທຳນຽມ,Taxes and duties,,expense,debit,PL
+635,ອາກອນອື່ນ ແລະ ຄ່າທຳນຽມ,Other taxes and fees,63,expense,debit,PL
+64,ຄ່າແຮງງານ,Personnel costs,,expense,debit,PL
+641,ຄ່າແຮງງານ ພະນັກງານ,Staff costs,64,expense,debit,PL
+645,ເງິນສົມທົບປະກັນສັງຄົມຂອງນາຍຈ້າງ,Employer social security contributions,64,expense,debit,PL
+65,ຄ່າໃຊ້ຈ່າຍດຳເນີນງານອື່ນ,Other operating expenses,,expense,debit,PL
+66,ຄ່າໃຊ້ຈ່າຍດອກເບ້ຍ ແລະ ການເງິນ,Interest and financial expenses,,expense,debit,PL
+661,ດອກເບ້ຍເງິນກູ້,Loan interest,66,expense,debit,PL
+666,ຂາດທຶນຈາກອັດຕາແລກປ່ຽນ,Foreign exchange loss,66,expense,debit,PL
+68,ຄ່າຫຼູ້ຍຫ້ຽນ ແລະ ຄ່າເຜື່ອ,Depreciation and provisions,,expense,debit,PL
+681,ຄ່າຫຼູ້ຍຫ້ຽນປະຈຳງວດ,Depreciation expense,68,expense,debit,PL
+687,ຄ່າເຜື່ອໜີ້ສົງໄສຈະສູນ,Doubtful debt provision expense,68,expense,debit,PL
+69,ອາກອນກຳໄລ,Profit tax,,expense,debit,PL
+695,ອາກອນກຳໄລປະຈຳປີ,Annual profit tax,69,expense,debit,PL
+70,ລາຍຮັບຈາກການດຳເນີນງານ,Operating revenue,,revenue,credit,PL
+701,ລາຍຮັບຈາກການຂາຍສິນຄ້າ,Sales revenue,70,revenue,credit,PL
+706,ລາຍຮັບຈາກການບໍລິການ,Service revenue,70,revenue,credit,PL
+709,ສ່ວນຫຼຸດ ແລະ ສິນຄ້າສົ່ງຄືນ,Discounts and sales returns,70,revenue,debit,PL
+71,ລາຍຮັບອື່ນຈາກການດຳເນີນງານ,Other operating revenue,,revenue,credit,PL
+719,ລາຍຮັບອື່ນຫຼາກຫຼາຍ,Miscellaneous other revenue,71,revenue,credit,PL
+76,ລາຍຮັບທາງການເງິນ,Financial revenue,,revenue,credit,PL
+762,ດອກເບ້ຍຮັບ,Interest income,76,revenue,credit,PL
+766,ກຳໄລຈາກອັດຕາແລກປ່ຽນ,Foreign exchange gain,76,revenue,credit,PL
+77,ລາຍຮັບພິເສດ,Extraordinary income,,revenue,credit,PL
