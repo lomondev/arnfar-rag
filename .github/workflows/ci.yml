@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A superseded run has nothing left to tell us.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  typescript:
+    name: TypeScript — lint, types, tests
+    runs-on: ubuntu-latest
+
+    services:
+      # The tests that matter most — tenant isolation and the export invariants — are
+      # integration tests. They skip themselves when no database is configured, so
+      # without this service CI would report green while proving nothing.
+      postgres:
+        image: pgvector/pgvector:0.8.0-pg16
+        env:
+          POSTGRES_USER: arnfar
+          POSTGRES_PASSWORD: ci-not-a-secret
+          POSTGRES_DB: arnfar
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U arnfar -d arnfar"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      # The superuser connection: migrations, and seeding the second tenant in the RLS
+      # suite. The application connects as arnfar_app, created below.
+      ADMIN_DATABASE_URL: postgres://arnfar:ci-not-a-secret@localhost:5432/arnfar
+      DATABASE_URL: postgres://arnfar_app:ci-not-a-secret@localhost:5432/arnfar
+      APP_DB_ROLE: arnfar_app
+      APP_DB_PASSWORD: ci-not-a-secret
+      DEV_HF_ID: 018f9a1e-7c00-7000-8000-000000000001
+      DEV_COMPANY_ID: 018f9a1e-7c00-7000-8000-000000000002
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - run: bun install --frozen-lockfile
+
+      - name: Extensions the schema depends on
+        run: psql "$ADMIN_DATABASE_URL" -f infra/postgres/init.sql
+
+      - name: Migrate
+        run: bun run --filter '@arnfar/db' migrate
+
+      - name: Create the unprivileged application role
+        # Without this the tests would run as the superuser, which Postgres exempts from
+        # row security — every RLS assertion would pass for the wrong reason.
+        run: DATABASE_URL="$ADMIN_DATABASE_URL" bun run --filter '@arnfar/db' app-role
+
+      - name: Lint
+        run: bunx biome check .
+
+      - name: Typecheck
+        run: bun run --filter '*' typecheck
+
+      - name: Test
+        run: bun test
+
+      - name: Authoring templates
+        run: bun run check:templates
+
+  python:
+    name: Python — ruff, mypy, pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # Matches the sidecar images. A newer interpreter here would test code paths
+          # that never run in production.
+          python-version: "3.12"
+
+      - run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Typecheck
+        # Both sidecars define a top-level `app` package, so they cannot share one run.
+        run: |
+          (cd services/lao-nlp && mypy --config-file ../../pyproject.toml app)
+          (cd services/docx-extractor && mypy --config-file ../../pyproject.toml app)
+
+      - name: Test
+        run: |
+          (cd services/lao-nlp && pytest -c ../../pyproject.toml tests)
+          (cd services/docx-extractor && pytest -c ../../pyproject.toml tests)
+
+  images:
+    name: Container images build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Build only — publishing is a release concern. This exists so a broken Dockerfile
+      # is caught on the PR that broke it rather than at install time on a client machine.
+      - name: rag-api
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/rag-api/Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

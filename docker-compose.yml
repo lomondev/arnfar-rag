@@ -46,5 +46,60 @@ services:
       retries: 5
       start_period: 5s
 
+  # ── the application itself ────────────────────────────────────────────────
+  # Behind the "app" profile, so the default `docker compose up -d` still brings up only
+  # infrastructure and leaves rag-api/web to `bun run dev:*` on the host — the fast inner
+  # loop. Use `docker compose --profile app up -d` for the full containerised stack: a
+  # client install, or a smoke test of what actually ships.
+  #
+  # Ollama stays on the HOST in both modes; it needs the GPU, and CLAUDE.md keeps all
+  # inference outside the container boundary.
+
+  rag-api:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: services/rag-api/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${RAG_API_PORT:-7730}:7730"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      LAO_NLP_URL: http://lao-nlp:7731
+      DOCX_EXTRACTOR_URL: http://docx-extractor:7732
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      DEV_HF_ID: ${DEV_HF_ID}
+      DEV_COMPANY_ID: ${DEV_COMPANY_ID}
+      NODE_ENV: production
+      LOG_FORMAT: json
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./storage:/repo/storage
+      - ./datasets:/repo/datasets
+    depends_on:
+      postgres:
+        condition: service_healthy
+      lao-nlp:
+        condition: service_healthy
+      docx-extractor:
+        condition: service_healthy
+
+  web:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # Baked into the client bundle at build time — the browser resolves this, so it
+        # must be an address the browser can reach, not a compose service name.
+        NEXT_PUBLIC_RAG_API_URL: ${NEXT_PUBLIC_RAG_API_URL:-http://localhost:7730}
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - rag-api
+
 volumes:
   pgdata:

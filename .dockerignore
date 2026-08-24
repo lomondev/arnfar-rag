@@ -1,0 +1,20 @@
+# Build context hygiene: without this the whole repo — including pgdata, dumps, and
+# every exported dataset — is uploaded to the daemon on each build.
+node_modules
+**/node_modules
+.next
+**/.next
+.git
+.venv-tools
+__pycache__
+**/__pycache__
+storage
+backups
+datasets
+pgdata
+.logs
+.run
+.env
+.env.*
+!.env.example
+*.log
