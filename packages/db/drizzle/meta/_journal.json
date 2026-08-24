@@ -22,6 +22,13 @@
       "when": 1784701143799,
       "tag": "0002_lyrical_spiral",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784701143800,
+      "tag": "0003_tenant_rls",
+      "breakpoints": true
     }
   ]
 }

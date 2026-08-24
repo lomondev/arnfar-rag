@@ -10,7 +10,14 @@ export default defineConfig({
   schema: "./src/schema/index.ts",
   out: "./drizzle",
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? "postgres://arnfar:change-me-locally@localhost:5432/arnfar",
+    // Migrations create tables, policies, and indexes — none of which the application
+    // role may do. ADMIN_DATABASE_URL is the owner/superuser connection; DATABASE_URL is
+    // the unprivileged one the service runs as (see packages/db/src/scripts/app-role.ts).
+    // Falling back keeps single-role setups working.
+    url:
+      process.env.ADMIN_DATABASE_URL ??
+      process.env.DATABASE_URL ??
+      "postgres://arnfar:change-me-locally@localhost:5432/arnfar",
   },
   strict: true,
   verbose: true,
