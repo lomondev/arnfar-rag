@@ -1,8 +1,5 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Check, FileUp, Loader2, RefreshCw, Sparkles, Trash2, Upload } from "lucide-react";
-
 import { Badge } from "@arnfar/ui/components/badge";
 import { Button } from "@arnfar/ui/components/button";
 import {
@@ -17,6 +14,17 @@ import { Input } from "@arnfar/ui/components/input";
 import { Label } from "@arnfar/ui/components/label";
 import { Select } from "@arnfar/ui/components/select";
 import { cn } from "@arnfar/ui/lib/utils";
+import {
+  AlertTriangle,
+  Check,
+  FileUp,
+  Loader2,
+  RefreshCw,
+  Sparkles,
+  Trash2,
+  Upload,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useCollections } from "@/features/studio/useCollections";
 
@@ -47,7 +55,12 @@ interface PreviewResult {
   byKind: Record<string, number>;
   totalTokens: number;
   accountRows: number;
-  defectTotals: { zeroWidth: number; doubledMarks: number; spaceBeforeMark: number; affectedChunks: number };
+  defectTotals: {
+    zeroWidth: number;
+    doubledMarks: number;
+    spaceBeforeMark: number;
+    affectedChunks: number;
+  };
   warnings: string[];
 }
 interface DocRow {
@@ -285,22 +298,34 @@ export function IngestClient() {
   return (
     <div className="mx-auto w-full max-w-5xl px-6 py-6">
       <h1 className="text-lg font-semibold">
-        Ingest <span className="text-muted-foreground text-sm font-normal">ນຳເຂົ້າ · ທຳຄວາມສະອາດ · ຕັດຕອນ · embed</span>
+        Ingest{" "}
+        <span className="text-muted-foreground text-sm font-normal">
+          ນຳເຂົ້າ · ທຳຄວາມສະອາດ · ຕັດຕອນ · embed
+        </span>
       </h1>
 
       {error && (
-        <p role="alert" className="border-destructive/40 bg-destructive/10 text-destructive mt-3 rounded-lg border px-3 py-2 text-sm">
+        <p
+          role="alert"
+          className="border-destructive/40 bg-destructive/10 text-destructive mt-3 rounded-lg border px-3 py-2 text-sm"
+        >
           {error}
         </p>
       )}
 
       {/* ══ 1 · Upload & preview ══════════════════════════════════════ */}
       <section className="glass glass-strong mt-4 rounded-2xl p-5">
-        <h2 className="text-sm font-semibold">1 · ອັບໂຫຼດ ແລະ ກວດກ່ອນ <span className="text-muted-foreground font-normal">upload &amp; preview (dry-run)</span></h2>
+        <h2 className="text-sm font-semibold">
+          1 · ອັບໂຫຼດ ແລະ ກວດກ່ອນ{" "}
+          <span className="text-muted-foreground font-normal">upload &amp; preview (dry-run)</span>
+        </h2>
 
         {!file && (
           <label
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
             onDragLeave={() => setDragOver(false)}
             onDrop={(e) => {
               e.preventDefault();
@@ -356,15 +381,27 @@ export function IngestClient() {
             </div>
             <div>
               <Label className="text-xs">collection</Label>
-              <Select value={collection} onChange={(e) => setCollection(e.target.value)} className="mt-1">
+              <Select
+                value={collection}
+                onChange={(e) => setCollection(e.target.value)}
+                className="mt-1"
+              >
                 {COLLECTIONS.map((c) => (
-                  <option key={c} value={c}>{c}</option>
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
                 ))}
               </Select>
             </div>
             <div className="sm:col-span-3">
               <Label className="text-xs">authority (ອົງການອອກເອກະສານ)</Label>
-              <Input value={authority} onChange={(e) => setAuthority(e.target.value)} placeholder="ກະຊວງການເງິນ…" className="mt-1" lang="lo" />
+              <Input
+                value={authority}
+                onChange={(e) => setAuthority(e.target.value)}
+                placeholder="ກະຊວງການເງິນ…"
+                className="mt-1"
+                lang="lo"
+              />
             </div>
           </div>
         )}
@@ -377,7 +414,13 @@ export function IngestClient() {
               <Badge variant="secondary">{preview.chunks.length} chunks</Badge>
               <Badge variant="secondary">{preview.totalTokens} tokens</Badge>
               {Object.entries(preview.byKind).map(([k, n]) => (
-                <span key={k} className={cn("rounded-full px-2 py-0.5 text-xs font-medium", KIND_STYLE[k] ?? "bg-secondary")}>
+                <span
+                  key={k}
+                  className={cn(
+                    "rounded-full px-2 py-0.5 text-xs font-medium",
+                    KIND_STYLE[k] ?? "bg-secondary",
+                  )}
+                >
                   {k}: {n}
                 </span>
               ))}
@@ -411,15 +454,25 @@ export function IngestClient() {
                 <>
                   <p className="flex items-center gap-1.5 font-medium">
                     <AlertTriangle className="size-4" />
-                    ພົບຂໍ້ບົກພ່ອງ Lao ໃນ {preview.defectTotals.affectedChunks} chunks — ຈະຖືກແກ້ໃນ content_norm/content_seg ອັດຕະໂນມັດ
+                    ພົບຂໍ້ບົກພ່ອງ Lao ໃນ {preview.defectTotals.affectedChunks} chunks — ຈະຖືກແກ້ໃນ
+                    content_norm/content_seg ອັດຕະໂນມັດ
                   </p>
                   <p className="text-muted-foreground mt-1 text-xs">
-                    zero-width: {preview.defectTotals.zeroWidth} · doubled marks: {preview.defectTotals.doubledMarks} · broken syllables: {preview.defectTotals.spaceBeforeMark} — ຕົ້ນສະບັບ (content) ບໍ່ຖືກແຕະຕ້ອງ
+                    zero-width: {preview.defectTotals.zeroWidth} · doubled marks:{" "}
+                    {preview.defectTotals.doubledMarks} · broken syllables:{" "}
+                    {preview.defectTotals.spaceBeforeMark} — ຕົ້ນສະບັບ (content) ບໍ່ຖືກແຕະຕ້ອງ
                   </p>
                   {defectSamples.map((c) => (
                     <div key={c.seq} className="glass-field mt-2 rounded-lg px-2.5 py-1.5 text-xs">
-                      <p lang="lo" className="text-destructive/80 line-through decoration-destructive/40">{c.excerpt.slice(0, 100)}</p>
-                      <p lang="lo" className="text-emerald-700 dark:text-emerald-400">{c.cleanedExcerpt?.slice(0, 100)}</p>
+                      <p
+                        lang="lo"
+                        className="text-destructive/80 line-through decoration-destructive/40"
+                      >
+                        {c.excerpt.slice(0, 100)}
+                      </p>
+                      <p lang="lo" className="text-emerald-700 dark:text-emerald-400">
+                        {c.cleanedExcerpt?.slice(0, 100)}
+                      </p>
                     </div>
                   ))}
                 </>
@@ -432,20 +485,41 @@ export function IngestClient() {
 
             {/* chunk boundaries */}
             <div className="mt-3">
-              <p className="text-muted-foreground text-xs font-medium">ຂອບເຂດ chunks (ຕາຕະລາງ = ອັນດຽວ, ບໍ່ຕັດແຍກ):</p>
+              <p className="text-muted-foreground text-xs font-medium">
+                ຂອບເຂດ chunks (ຕາຕະລາງ = ອັນດຽວ, ບໍ່ຕັດແຍກ):
+              </p>
               <div className="mt-1.5 space-y-1.5">
                 {chunksToShow.map((c) => (
-                  <div key={c.seq} className="border-border flex items-start gap-2 rounded-md border px-2.5 py-1.5 text-xs">
-                    <span className="text-muted-foreground w-6 shrink-0 text-right font-mono">{c.seq}</span>
-                    <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 font-medium", KIND_STYLE[c.kind] ?? "bg-secondary")}>{c.kind}</span>
+                  <div
+                    key={c.seq}
+                    className="border-border flex items-start gap-2 rounded-md border px-2.5 py-1.5 text-xs"
+                  >
+                    <span className="text-muted-foreground w-6 shrink-0 text-right font-mono">
+                      {c.seq}
+                    </span>
+                    <span
+                      className={cn(
+                        "shrink-0 rounded-full px-1.5 py-0.5 font-medium",
+                        KIND_STYLE[c.kind] ?? "bg-secondary",
+                      )}
+                    >
+                      {c.kind}
+                    </span>
                     <span className="text-muted-foreground shrink-0">{c.tokenCount}t</span>
                     {c.defects && <AlertTriangle className="size-3.5 shrink-0 text-amber-600" />}
-                    <span lang="lo" className="min-w-0 flex-1 truncate">{c.excerpt}</span>
+                    <span lang="lo" className="min-w-0 flex-1 truncate">
+                      {c.excerpt}
+                    </span>
                   </div>
                 ))}
               </div>
               {preview.chunks.length > 6 && (
-                <Button size="xs" variant="ghost" className="text-muted-foreground mt-1.5" onClick={() => setShowAllChunks((v) => !v)}>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  className="text-muted-foreground mt-1.5"
+                  onClick={() => setShowAllChunks((v) => !v)}
+                >
                   {showAllChunks ? "ຫຍໍ້ລົງ" : `ເບິ່ງທັງໝົດ (${preview.chunks.length})`}
                 </Button>
               )}
@@ -460,13 +534,21 @@ export function IngestClient() {
                   title={!title.trim() ? "ໃສ່ຫົວຂໍ້ກ່ອນ · enter a title first" : undefined}
                   className="gap-1.5"
                 >
-                  {committing ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+                  {committing ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Upload className="size-4" />
+                  )}
                   ນຳເຂົ້າ · commit &amp; embed
                 </Button>
                 {!title.trim() && (
-                  <span lang="lo" className="text-xs text-amber-600">← ໃສ່ຫົວຂໍ້ຄວາມຮູ້ກ່ອນ ຈຶ່ງນຳເຂົ້າໄດ້</span>
+                  <span lang="lo" className="text-xs text-amber-600">
+                    ← ໃສ່ຫົວຂໍ້ຄວາມຮູ້ກ່ອນ ຈຶ່ງນຳເຂົ້າໄດ້
+                  </span>
                 )}
-                <Button variant="ghost" onClick={resetUpload} className="text-muted-foreground">ຍົກເລີກ</Button>
+                <Button variant="ghost" onClick={resetUpload} className="text-muted-foreground">
+                  ຍົກເລີກ
+                </Button>
               </div>
             )}
 
@@ -485,7 +567,12 @@ export function IngestClient() {
                     embedding {job.embedded}/{job.total} — {job.status}
                   </span>
                   {job.status === "done" && (
-                    <Button size="xs" variant="ghost" onClick={resetUpload} className="text-muted-foreground ms-auto">
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      onClick={resetUpload}
+                      className="text-muted-foreground ms-auto"
+                    >
                       ນຳເຂົ້າໄຟລ໌ ຕໍ່ໄປ →
                     </Button>
                   )}
@@ -493,7 +580,9 @@ export function IngestClient() {
                 <div className="bg-secondary mt-2 h-2 overflow-hidden rounded-full">
                   <div
                     className="bg-primary h-full rounded-full transition-all"
-                    style={{ width: `${job.total ? Math.round((job.embedded / job.total) * 100) : 0}%` }}
+                    style={{
+                      width: `${job.total ? Math.round((job.embedded / job.total) * 100) : 0}%`,
+                    }}
                   />
                 </div>
               </div>
@@ -505,20 +594,33 @@ export function IngestClient() {
       {/* ══ 2 · Documents ═════════════════════════════════════════════ */}
       <section className="glass glass-strong mt-4 rounded-2xl p-5">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold">2 · ເອກະສານ <span className="text-muted-foreground font-normal">documents</span></h2>
-          <Button size="xs" variant="ghost" onClick={() => void refreshDocs()} className="text-muted-foreground ms-auto gap-1">
+          <h2 className="text-sm font-semibold">
+            2 · ເອກະສານ <span className="text-muted-foreground font-normal">documents</span>
+          </h2>
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() => void refreshDocs()}
+            className="text-muted-foreground ms-auto gap-1"
+          >
             <RefreshCw className="size-3.5" /> refresh
           </Button>
         </div>
         {docs.length === 0 ? (
-          <p lang="lo" className="text-muted-foreground mt-3 text-sm">ຍັງບໍ່ມີເອກະສານ — ອັບໂຫຼດຂ້າງເທິງ</p>
+          <p lang="lo" className="text-muted-foreground mt-3 text-sm">
+            ຍັງບໍ່ມີເອກະສານ — ອັບໂຫຼດຂ້າງເທິງ
+          </p>
         ) : (
           <div className="mt-2 divide-y">
             {docs.map((d) => (
               <div key={d.id} className="flex items-center gap-3 py-2.5 text-sm">
-                <span lang="lo" className="min-w-0 flex-1 truncate font-medium" title={d.title}>{d.title}</span>
+                <span lang="lo" className="min-w-0 flex-1 truncate font-medium" title={d.title}>
+                  {d.title}
+                </span>
                 <Badge variant="secondary">{d.collection}</Badge>
-                <span className="text-muted-foreground w-20 text-right text-xs">{d.chunks} chunks</span>
+                <span className="text-muted-foreground w-20 text-right text-xs">
+                  {d.chunks} chunks
+                </span>
                 {d.pending > 0 ? (
                   <span className="flex items-center gap-1 text-xs text-amber-600">
                     <Loader2 className="size-3 animate-spin" /> {d.pending} embedding
@@ -532,7 +634,10 @@ export function IngestClient() {
                   size="icon-sm"
                   variant="ghost"
                   title="Delete document"
-                  onClick={() => { setDeleteTarget(d); setCitedQa(null); }}
+                  onClick={() => {
+                    setDeleteTarget(d);
+                    setCitedQa(null);
+                  }}
                   className="text-muted-foreground hover:text-destructive"
                 >
                   <Trash2 className="size-4" />
@@ -545,26 +650,53 @@ export function IngestClient() {
 
       {/* ══ 3 · Corpus cleaning (retro) ═══════════════════════════════ */}
       <section className="glass glass-strong mt-4 rounded-2xl p-5">
-        <h2 className="text-sm font-semibold">3 · ທຳຄວາມສະອາດ corpus ເກົ່າ <span className="text-muted-foreground font-normal">retro-clean existing chunks</span></h2>
+        <h2 className="text-sm font-semibold">
+          3 · ທຳຄວາມສະອາດ corpus ເກົ່າ{" "}
+          <span className="text-muted-foreground font-normal">retro-clean existing chunks</span>
+        </h2>
         <p lang="lo" className="text-muted-foreground mt-1 text-xs">
-          ແກ້ ສະຫຼະຊ້ຳ / ພະຍາງຂາດ / zero-width ໃນ chunks ທີ່ນຳເຂົ້າກ່ອນມີດ່ານທຳຄວາມສະອາດ. ແກ້ສະເພາະ content_norm + content_seg ແລ້ວ embed ຄືນ — ຕົ້ນສະບັບບໍ່ຖືກແຕະ.
+          ແກ້ ສະຫຼະຊ້ຳ / ພະຍາງຂາດ / zero-width ໃນ chunks ທີ່ນຳເຂົ້າກ່ອນມີດ່ານທຳຄວາມສະອາດ. ແກ້ສະເພາະ
+          content_norm + content_seg ແລ້ວ embed ຄືນ — ຕົ້ນສະບັບບໍ່ຖືກແຕະ.
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Button size="xs" variant="outline" onClick={() => void runScan()} disabled={scanning} className="gap-1.5">
-            {scanning ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+          <Button
+            size="xs"
+            variant="outline"
+            onClick={() => void runScan()}
+            disabled={scanning}
+            className="gap-1.5"
+          >
+            {scanning ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="size-3.5" />
+            )}
             ສະແກນ · scan (dry-run)
           </Button>
           {scan && scan.affected > 0 && (
             <Button size="xs" onClick={() => void runFix()} disabled={fixing} className="gap-1.5">
-              {fixing ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
+              {fixing ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Check className="size-3.5" />
+              )}
               ແກ້ໄຂ {scan.affected} chunks &amp; re-embed
             </Button>
           )}
         </div>
         {scan && (
           <p className="text-muted-foreground mt-2 text-sm">
-            scanned {scan.scanned} · affected <span className={cn("font-medium", scan.affected > 0 ? "text-amber-600" : "text-emerald-600")}>{scan.affected}</span>
-            {" — "}zero-width {scan.byDefect.zeroWidth} · doubled {scan.byDefect.doubledMarks} · broken {scan.byDefect.spaceBeforeMark}
+            scanned {scan.scanned} · affected{" "}
+            <span
+              className={cn(
+                "font-medium",
+                scan.affected > 0 ? "text-amber-600" : "text-emerald-600",
+              )}
+            >
+              {scan.affected}
+            </span>
+            {" — "}zero-width {scan.byDefect.zeroWidth} · doubled {scan.byDefect.doubledMarks} ·
+            broken {scan.byDefect.spaceBeforeMark}
           </p>
         )}
         {fixDone && (
@@ -575,18 +707,29 @@ export function IngestClient() {
                 — <Loader2 className="size-3.5 animate-spin" /> re-embedding, {reembedPending} left
               </span>
             )}
-            {reembedPending === 0 && <span className="text-muted-foreground">— re-embed complete</span>}
+            {reembedPending === 0 && (
+              <span className="text-muted-foreground">— re-embed complete</span>
+            )}
           </p>
         )}
       </section>
 
       {/* ── delete confirm ── */}
-      <Dialog open={deleteTarget !== null} onOpenChange={(o) => { if (!o) { setDeleteTarget(null); setCitedQa(null); } }}>
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(o) => {
+          if (!o) {
+            setDeleteTarget(null);
+            setCitedQa(null);
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle lang="lo">ລຶບເອກະສານ?</DialogTitle>
             <DialogDescription lang="lo">
-              {deleteTarget?.title} — {deleteTarget?.chunks} chunks ຈະຖືກລຶບຖາວອນ. ໄຟລ໌ຕົ້ນສະບັບໃນ storage ຍັງເກັບໄວ້.
+              {deleteTarget?.title} — {deleteTarget?.chunks} chunks ຈະຖືກລຶບຖາວອນ. ໄຟລ໌ຕົ້ນສະບັບໃນ storage
+              ຍັງເກັບໄວ້.
             </DialogDescription>
           </DialogHeader>
           {citedQa !== null && citedQa > 0 && (
@@ -596,7 +739,15 @@ export function IngestClient() {
             </p>
           )}
           <DialogFooter>
-            <Button variant="ghost" onClick={() => { setDeleteTarget(null); setCitedQa(null); }}>ຍົກເລີກ</Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setDeleteTarget(null);
+                setCitedQa(null);
+              }}
+            >
+              ຍົກເລີກ
+            </Button>
             <Button
               variant="destructive"
               disabled={deleting}

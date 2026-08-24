@@ -1,8 +1,5 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { BookOpen, Check, ChevronDown, Eye, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
-
 import { Badge } from "@arnfar/ui/components/badge";
 import { Button } from "@arnfar/ui/components/button";
 import {
@@ -17,6 +14,18 @@ import { Input } from "@arnfar/ui/components/input";
 import { Label } from "@arnfar/ui/components/label";
 import { Textarea } from "@arnfar/ui/components/textarea";
 import { cn } from "@arnfar/ui/lib/utils";
+import {
+  BookOpen,
+  Check,
+  ChevronDown,
+  Eye,
+  Loader2,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { renderMarkdown } from "@/features/chat/markdown";
 import { useCollections } from "@/features/studio/useCollections";
@@ -55,8 +64,18 @@ export function KnowledgeClient() {
 
   /* dialogs */
   const [kindDialog, setKindDialog] = useState(false);
-  const [kindForm, setKindForm] = useState({ key: "", nameLo: "", nameEn: "", description: "", collection: "sop" });
-  const [entryDialog, setEntryDialog] = useState<null | { id?: string; title: string; body: string }>(null);
+  const [kindForm, setKindForm] = useState({
+    key: "",
+    nameLo: "",
+    nameEn: "",
+    description: "",
+    collection: "sop",
+  });
+  const [entryDialog, setEntryDialog] = useState<null | {
+    id?: string;
+    title: string;
+    body: string;
+  }>(null);
   const [deleteEntry, setDeleteEntry] = useState<Entry | null>(null);
   const [deleteAll, setDeleteAll] = useState(false);
   const [deleteKind, setDeleteKind] = useState<Kind | null>(null);
@@ -152,7 +171,11 @@ export function KnowledgeClient() {
         : await fetch(`${BASE}/knowledge/entries`, {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ kindKey: selected, title: entryDialog.title, body: entryDialog.body }),
+            body: JSON.stringify({
+              kindKey: selected,
+              title: entryDialog.title,
+              body: entryDialog.body,
+            }),
           });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(data.error ?? `save failed (${res.status})`);
@@ -228,9 +251,18 @@ export function KnowledgeClient() {
       <aside className="w-60 shrink-0">
         <div className="flex items-center justify-between">
           <h1 className="text-sm font-semibold">
-            Knowledge <span lang="lo" className="text-muted-foreground font-normal">ຄວາມຮູ້</span>
+            Knowledge{" "}
+            <span lang="lo" className="text-muted-foreground font-normal">
+              ຄວາມຮູ້
+            </span>
           </h1>
-          <Button size="icon-sm" variant="ghost" title="ສ້າງປະເພດໃໝ່ · new kind" onClick={() => setKindDialog(true)} className="text-muted-foreground">
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            title="ສ້າງປະເພດໃໝ່ · new kind"
+            onClick={() => setKindDialog(true)}
+            className="text-muted-foreground"
+          >
             <Plus className="size-4" />
           </Button>
         </div>
@@ -260,7 +292,10 @@ export function KnowledgeClient() {
               <button
                 type="button"
                 title="ລຶບປະເພດ · delete kind"
-                onClick={() => { setDeleteKind(k); setCitedQa(null); }}
+                onClick={() => {
+                  setDeleteKind(k);
+                  setCitedQa(null);
+                }}
                 className="text-muted-foreground hover:text-destructive shrink-0 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
               >
                 <Trash2 className="size-3.5" />
@@ -278,14 +313,19 @@ export function KnowledgeClient() {
       {/* ── content ────────────────────────────────────────────────── */}
       <main className="min-w-0 flex-1">
         {error && (
-          <p role="alert" className="border-destructive/40 bg-destructive/10 text-destructive mb-3 rounded-lg border px-3 py-2 text-sm">
+          <p
+            role="alert"
+            className="border-destructive/40 bg-destructive/10 text-destructive mb-3 rounded-lg border px-3 py-2 text-sm"
+          >
             {error}
           </p>
         )}
 
         {!selected ? (
           <div className="border-border mt-4 rounded-xl border border-dashed px-6 py-14 text-center">
-            <p lang="lo" className="text-sm font-medium">ຍັງບໍ່ມີປະເພດຄວາມຮູ້</p>
+            <p lang="lo" className="text-sm font-medium">
+              ຍັງບໍ່ມີປະເພດຄວາມຮູ້
+            </p>
             <p lang="lo" className="text-muted-foreground mt-1 text-xs">
               ສ້າງປະເພດທຳອິດ ດ້ວຍປຸ່ມ + ທາງຊ້າຍ — ເຊັ່ນ ອັດຕາອາກອນ, ຂັ້ນຕອນ, ນະໂຍບາຍ
             </p>
@@ -296,24 +336,37 @@ export function KnowledgeClient() {
               <div className="min-w-0">
                 <h2 lang="lo" className="truncate text-base font-semibold">
                   {activeKind?.nameLo ?? selected}
-                  {activeKind?.nameEn && <span className="text-muted-foreground ms-2 text-sm font-normal">{activeKind.nameEn}</span>}
+                  {activeKind?.nameEn && (
+                    <span className="text-muted-foreground ms-2 text-sm font-normal">
+                      {activeKind.nameEn}
+                    </span>
+                  )}
                 </h2>
                 {activeKind?.description && (
                   <p className="text-muted-foreground text-xs">{activeKind.description}</p>
                 )}
               </div>
-              <Badge variant="secondary" className="ms-auto">collection: {activeKind?.collection}</Badge>
+              <Badge variant="secondary" className="ms-auto">
+                collection: {activeKind?.collection}
+              </Badge>
               {entries.length > 0 && (
                 <Button
                   size="xs"
                   variant="ghost"
-                  onClick={() => { setDeleteAll(true); setCitedQa(null); }}
+                  onClick={() => {
+                    setDeleteAll(true);
+                    setCitedQa(null);
+                  }}
                   className="text-muted-foreground hover:text-destructive gap-1.5"
                 >
                   <Trash2 className="size-3.5" /> ລຶບທັງໝົດ
                 </Button>
               )}
-              <Button size="xs" onClick={() => setEntryDialog({ title: "", body: "" })} className="gap-1.5">
+              <Button
+                size="xs"
+                onClick={() => setEntryDialog({ title: "", body: "" })}
+                className="gap-1.5"
+              >
                 <Plus className="size-3.5" /> ເພີ່ມຄວາມຮູ້ · add
               </Button>
             </div>
@@ -342,7 +395,9 @@ export function KnowledgeClient() {
               </p>
             ) : entries.length === 0 ? (
               <div className="border-border mt-4 rounded-xl border border-dashed px-6 py-10 text-center">
-                <p lang="lo" className="text-sm font-medium">ຍັງບໍ່ມີຄວາມຮູ້ໃນປະເພດນີ້</p>
+                <p lang="lo" className="text-sm font-medium">
+                  ຍັງບໍ່ມີຄວາມຮູ້ໃນປະເພດນີ້
+                </p>
                 <p lang="lo" className="text-muted-foreground mt-1 text-xs">
                   ທຸກລາຍການທີ່ເພີ່ມ ຈະຖືກ ທຳຄວາມສະອາດ → ຕັດຕອນ → embed ໃຫ້ AI ຄົ້ນຫາ ແລະ ອ້າງອີງໄດ້ທັນທີ
                 </p>
@@ -368,7 +423,9 @@ export function KnowledgeClient() {
                             expandedId !== e.id && "-rotate-90",
                           )}
                         />
-                        <span lang="lo" className="min-w-0 flex-1 truncate text-sm font-medium">{e.title}</span>
+                        <span lang="lo" className="min-w-0 flex-1 truncate text-sm font-medium">
+                          {e.title}
+                        </span>
                       </button>
                       {e.pending > 0 ? (
                         <span className="flex items-center gap-1 text-xs text-amber-600">
@@ -379,7 +436,9 @@ export function KnowledgeClient() {
                           <Check className="size-3" /> ຄົ້ນຫາໄດ້
                         </span>
                       )}
-                      <span className="text-muted-foreground text-xs">{e.chunks} chunk{e.chunks === 1 ? "" : "s"}</span>
+                      <span className="text-muted-foreground text-xs">
+                        {e.chunks} chunk{e.chunks === 1 ? "" : "s"}
+                      </span>
                       <Button
                         size="icon-sm"
                         variant="ghost"
@@ -393,16 +452,24 @@ export function KnowledgeClient() {
                         size="icon-sm"
                         variant="ghost"
                         title="Delete"
-                        onClick={() => { setDeleteEntry(e); setCitedQa(null); }}
+                        onClick={() => {
+                          setDeleteEntry(e);
+                          setCitedQa(null);
+                        }}
                         className="text-muted-foreground hover:text-destructive opacity-0 transition-opacity group-hover:opacity-100"
                       >
                         <Trash2 className="size-3.5" />
                       </Button>
                     </div>
                     {expandedId === e.id ? (
-                      <div lang="lo" className="mt-2 text-[0.92rem]">{renderMarkdown(e.body, noCite)}</div>
+                      <div lang="lo" className="mt-2 text-[0.92rem]">
+                        {renderMarkdown(e.body, noCite)}
+                      </div>
                     ) : (
-                      <p lang="lo" className="text-muted-foreground mt-1 line-clamp-2 text-[0.85rem] leading-[1.7] whitespace-pre-wrap">
+                      <p
+                        lang="lo"
+                        className="text-muted-foreground mt-1 line-clamp-2 text-[0.85rem] leading-[1.7] whitespace-pre-wrap"
+                      >
                         {e.body}
                       </p>
                     )}
@@ -427,17 +494,35 @@ export function KnowledgeClient() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">ຊື່ (ລາວ) *</Label>
-                <Input lang="lo" value={kindForm.nameLo} onChange={(e) => setKindForm((f) => ({ ...f, nameLo: e.target.value }))} placeholder="ອັດຕາອາກອນ" className="mt-1" />
+                <Input
+                  lang="lo"
+                  value={kindForm.nameLo}
+                  onChange={(e) => setKindForm((f) => ({ ...f, nameLo: e.target.value }))}
+                  placeholder="ອັດຕາອາກອນ"
+                  className="mt-1"
+                />
               </div>
               <div>
                 <Label className="text-xs">Name (EN)</Label>
-                <Input value={kindForm.nameEn} onChange={(e) => setKindForm((f) => ({ ...f, nameEn: e.target.value }))} placeholder="Tax rates" className="mt-1" />
+                <Input
+                  value={kindForm.nameEn}
+                  onChange={(e) => setKindForm((f) => ({ ...f, nameEn: e.target.value }))}
+                  placeholder="Tax rates"
+                  className="mt-1"
+                />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">key (a-z, 0-9, -) *</Label>
-                <Input value={kindForm.key} onChange={(e) => setKindForm((f) => ({ ...f, key: e.target.value.toLowerCase() }))} placeholder="tax-rates" className="mt-1 font-mono" />
+                <Input
+                  value={kindForm.key}
+                  onChange={(e) =>
+                    setKindForm((f) => ({ ...f, key: e.target.value.toLowerCase() }))
+                  }
+                  placeholder="tax-rates"
+                  className="mt-1 font-mono"
+                />
               </div>
               <div>
                 <Label className="text-xs">collection (ເລືອກ ຫຼື ພິມສ້າງໃໝ່)</Label>
@@ -445,7 +530,10 @@ export function KnowledgeClient() {
                   list="knowledge-collections"
                   value={kindForm.collection}
                   onChange={(e) =>
-                    setKindForm((f) => ({ ...f, collection: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-") }))
+                    setKindForm((f) => ({
+                      ...f,
+                      collection: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
+                    }))
                   }
                   placeholder="sop | tax | hr-policy…"
                   className="mt-1 font-mono"
@@ -459,12 +547,22 @@ export function KnowledgeClient() {
             </div>
             <div>
               <Label className="text-xs">description</Label>
-              <Input value={kindForm.description} onChange={(e) => setKindForm((f) => ({ ...f, description: e.target.value }))} className="mt-1" />
+              <Input
+                value={kindForm.description}
+                onChange={(e) => setKindForm((f) => ({ ...f, description: e.target.value }))}
+                className="mt-1"
+              />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setKindDialog(false)}>ຍົກເລີກ</Button>
-            <Button disabled={busy || !kindForm.key || !kindForm.nameLo} onClick={() => void saveKind()} className="gap-1.5">
+            <Button variant="ghost" onClick={() => setKindDialog(false)}>
+              ຍົກເລີກ
+            </Button>
+            <Button
+              disabled={busy || !kindForm.key || !kindForm.nameLo}
+              onClick={() => void saveKind()}
+              className="gap-1.5"
+            >
               {busy && <Loader2 className="size-4 animate-spin" />} ສ້າງ
             </Button>
           </DialogFooter>
@@ -472,7 +570,15 @@ export function KnowledgeClient() {
       </Dialog>
 
       {/* ── entry dialog (create/edit) ── */}
-      <Dialog open={entryDialog !== null} onOpenChange={(o) => { if (!o) { setEntryDialog(null); setPreviewOn(false); } }}>
+      <Dialog
+        open={entryDialog !== null}
+        onOpenChange={(o) => {
+          if (!o) {
+            setEntryDialog(null);
+            setPreviewOn(false);
+          }
+        }}
+      >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle lang="lo">{entryDialog?.id ? "ແກ້ໄຂຄວາມຮູ້" : "ເພີ່ມຄວາມຮູ້"}</DialogTitle>
@@ -484,22 +590,45 @@ export function KnowledgeClient() {
           <div className="grid gap-3">
             <div>
               <Label className="text-xs">ຫົວຂໍ້ *</Label>
-              <Input lang="lo" value={entryDialog?.title ?? ""} onChange={(e) => setEntryDialog((d) => (d ? { ...d, title: e.target.value } : d))} className="mt-1" />
+              <Input
+                lang="lo"
+                value={entryDialog?.title ?? ""}
+                onChange={(e) => setEntryDialog((d) => (d ? { ...d, title: e.target.value } : d))}
+                className="mt-1"
+              />
             </div>
             <div>
               <div className="flex items-center justify-between">
-                <Label className="text-xs">ເນື້ອໃນ * <span className="text-muted-foreground font-normal">Markdown: ## ຫົວຂໍ້ · **ເນັ້ນ** · | ຕາຕະລາງ | · - ລາຍການ</span></Label>
+                <Label className="text-xs">
+                  ເນື້ອໃນ *{" "}
+                  <span className="text-muted-foreground font-normal">
+                    Markdown: ## ຫົວຂໍ້ · **ເນັ້ນ** · | ຕາຕະລາງ | · - ລາຍການ
+                  </span>
+                </Label>
                 <div className="flex gap-1">
-                  <Button size="xs" variant={previewOn ? "ghost" : "secondary"} onClick={() => setPreviewOn(false)} className="gap-1">
+                  <Button
+                    size="xs"
+                    variant={previewOn ? "ghost" : "secondary"}
+                    onClick={() => setPreviewOn(false)}
+                    className="gap-1"
+                  >
                     <Pencil className="size-3" /> ຂຽນ
                   </Button>
-                  <Button size="xs" variant={previewOn ? "secondary" : "ghost"} onClick={() => setPreviewOn(true)} className="gap-1">
+                  <Button
+                    size="xs"
+                    variant={previewOn ? "secondary" : "ghost"}
+                    onClick={() => setPreviewOn(true)}
+                    className="gap-1"
+                  >
                     <Eye className="size-3" /> ເບິ່ງກ່ອນ
                   </Button>
                 </div>
               </div>
               {previewOn ? (
-                <div lang="lo" className="border-border mt-1 max-h-[50vh] min-h-40 overflow-y-auto rounded-md border px-3 py-2 text-[0.95rem]">
+                <div
+                  lang="lo"
+                  className="border-border mt-1 max-h-[50vh] min-h-40 overflow-y-auto rounded-md border px-3 py-2 text-[0.95rem]"
+                >
                   {entryDialog?.body.trim() ? (
                     renderMarkdown(entryDialog.body, noCite)
                   ) : (
@@ -519,7 +648,9 @@ export function KnowledgeClient() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setEntryDialog(null)}>ຍົກເລີກ</Button>
+            <Button variant="ghost" onClick={() => setEntryDialog(null)}>
+              ຍົກເລີກ
+            </Button>
             <Button
               disabled={busy || !entryDialog?.title.trim() || !entryDialog?.body.trim()}
               onClick={() => void saveEntry()}
@@ -532,7 +663,15 @@ export function KnowledgeClient() {
       </Dialog>
 
       {/* ── delete ALL entries of the kind ── */}
-      <Dialog open={deleteAll} onOpenChange={(o) => { if (!o) { setDeleteAll(false); setCitedQa(null); } }}>
+      <Dialog
+        open={deleteAll}
+        onOpenChange={(o) => {
+          if (!o) {
+            setDeleteAll(false);
+            setCitedQa(null);
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle lang="lo">ລຶບຄວາມຮູ້ທັງໝົດ ໃນ "{activeKind?.nameLo ?? selected}"?</DialogTitle>
@@ -546,7 +685,15 @@ export function KnowledgeClient() {
             </p>
           )}
           <DialogFooter>
-            <Button variant="ghost" onClick={() => { setDeleteAll(false); setCitedQa(null); }}>ຍົກເລີກ</Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setDeleteAll(false);
+                setCitedQa(null);
+              }}
+            >
+              ຍົກເລີກ
+            </Button>
             <Button
               variant="destructive"
               disabled={busy}
@@ -561,7 +708,15 @@ export function KnowledgeClient() {
       </Dialog>
 
       {/* ── delete kind (keep or purge its entries) ── */}
-      <Dialog open={deleteKind !== null} onOpenChange={(o) => { if (!o) { setDeleteKind(null); setCitedQa(null); } }}>
+      <Dialog
+        open={deleteKind !== null}
+        onOpenChange={(o) => {
+          if (!o) {
+            setDeleteKind(null);
+            setCitedQa(null);
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle lang="lo">ລຶບປະເພດ "{deleteKind?.nameLo}"?</DialogTitle>
@@ -575,7 +730,15 @@ export function KnowledgeClient() {
             </p>
           )}
           <DialogFooter className="flex-wrap gap-2">
-            <Button variant="ghost" onClick={() => { setDeleteKind(null); setCitedQa(null); }}>ຍົກເລີກ</Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setDeleteKind(null);
+                setCitedQa(null);
+              }}
+            >
+              ຍົກເລີກ
+            </Button>
             <Button
               variant="outline"
               disabled={busy}
@@ -600,11 +763,21 @@ export function KnowledgeClient() {
       </Dialog>
 
       {/* ── delete entry confirm ── */}
-      <Dialog open={deleteEntry !== null} onOpenChange={(o) => { if (!o) { setDeleteEntry(null); setCitedQa(null); } }}>
+      <Dialog
+        open={deleteEntry !== null}
+        onOpenChange={(o) => {
+          if (!o) {
+            setDeleteEntry(null);
+            setCitedQa(null);
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle lang="lo">ລຶບຄວາມຮູ້?</DialogTitle>
-            <DialogDescription lang="lo">{deleteEntry?.title} — {deleteEntry?.chunks} chunk(s) ຈະຖືກລຶບ ແລະ AI ຈະບໍ່ເຫັນມັນອີກ.</DialogDescription>
+            <DialogDescription lang="lo">
+              {deleteEntry?.title} — {deleteEntry?.chunks} chunk(s) ຈະຖືກລຶບ ແລະ AI ຈະບໍ່ເຫັນມັນອີກ.
+            </DialogDescription>
           </DialogHeader>
           {citedQa !== null && citedQa > 0 && (
             <p className="border-amber-500/40 bg-amber-500/10 rounded-lg border px-3 py-2 text-sm">
@@ -612,8 +785,21 @@ export function KnowledgeClient() {
             </p>
           )}
           <DialogFooter>
-            <Button variant="ghost" onClick={() => { setDeleteEntry(null); setCitedQa(null); }}>ຍົກເລີກ</Button>
-            <Button variant="destructive" disabled={busy} onClick={() => void doDeleteEntry(citedQa !== null && citedQa > 0)} className="gap-1.5">
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setDeleteEntry(null);
+                setCitedQa(null);
+              }}
+            >
+              ຍົກເລີກ
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={busy}
+              onClick={() => void doDeleteEntry(citedQa !== null && citedQa > 0)}
+              className="gap-1.5"
+            >
               {busy && <Loader2 className="size-4 animate-spin" />}
               {citedQa !== null && citedQa > 0 ? "ລຶບເຖິງແມ່ນ QA ຈະເສຍ" : "ລຶບ"}
             </Button>

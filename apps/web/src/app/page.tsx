@@ -1,7 +1,6 @@
-import Link from "next/link";
-
 import { buttonVariants } from "@arnfar/ui/components/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@arnfar/ui/components/card";
+import Link from "next/link";
 
 const RAG_API_URL = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
 
@@ -21,12 +20,19 @@ export default function Home() {
         </p>
 
         <div className="mt-7 flex gap-2">
-          <Link href="/chat" className={buttonVariants({ size: "lg", className: "rounded-full px-5" })}>
+          <Link
+            href="/chat"
+            className={buttonVariants({ size: "lg", className: "rounded-full px-5" })}
+          >
             Open chat
           </Link>
           <Link
             href="/studio/review"
-            className={buttonVariants({ variant: "glass", size: "lg", className: "rounded-full px-5" })}
+            className={buttonVariants({
+              variant: "glass",
+              size: "lg",
+              className: "rounded-full px-5",
+            })}
           >
             Studio
           </Link>
@@ -48,8 +54,7 @@ export default function Home() {
               answers (SEA-LION), cite-or-abstain
             </li>
             <li>
-              API:{" "}
-              <code className="glass-field rounded-md px-1.5 py-0.5">{RAG_API_URL}</code>{" "}
+              API: <code className="glass-field rounded-md px-1.5 py-0.5">{RAG_API_URL}</code>{" "}
               <span className="text-muted-foreground">(browser talks only to rag-api)</span>
             </li>
           </ul>

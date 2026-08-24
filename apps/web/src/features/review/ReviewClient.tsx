@@ -1,20 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-
 import { Badge } from "@arnfar/ui/components/badge";
 import { Button } from "@arnfar/ui/components/button";
 import { Select } from "@arnfar/ui/components/select";
 import { Textarea } from "@arnfar/ui/components/textarea";
 import { cn } from "@arnfar/ui/lib/utils";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   bulkAccept,
+  type Chunk,
+  type DocItem,
   fetchChunks,
   fetchDocuments,
   patchChunk,
-  type Chunk,
-  type DocItem,
   type ReviewState,
 } from "./api";
 
@@ -171,23 +170,26 @@ export function ReviewClient() {
         {/* Chunk list */}
         <ul className="border-border w-[340px] overflow-y-auto border-r">
           {chunks.map((c, i) => (
-            <li
-              key={c.id}
-              onClick={() => setCursor(i)}
-              className={cn(
-                "cursor-pointer border-b px-3 py-2",
-                i === cursor ? "bg-accent" : "hover:bg-muted/40",
-              )}
-            >
-              <div className="flex items-center gap-1.5 text-xs">
-                <span className="text-muted-foreground">#{c.seq}</span>
-                <Badge variant={KIND_VARIANT[c.kind] ?? "secondary"}>{c.kind}</Badge>
-                <span className="text-muted-foreground">{c.tokenCount}t</span>
-                <span className={cn("ml-auto", REVIEW_CLASS[c.review])}>● {c.review}</span>
-              </div>
-              <div lang="lo" className="mt-1 truncate text-sm">
-                {c.content.slice(0, 80)}
-              </div>
+            <li key={c.id} className="border-b">
+              <button
+                type="button"
+                onClick={() => setCursor(i)}
+                aria-current={i === cursor ? "true" : undefined}
+                className={cn(
+                  "focus-visible:ring-ring/50 w-full px-3 py-2 text-start outline-none focus-visible:ring-2",
+                  i === cursor ? "bg-accent" : "hover:bg-muted/40",
+                )}
+              >
+                <span className="flex items-center gap-1.5 text-xs">
+                  <span className="text-muted-foreground">#{c.seq}</span>
+                  <Badge variant={KIND_VARIANT[c.kind] ?? "secondary"}>{c.kind}</Badge>
+                  <span className="text-muted-foreground">{c.tokenCount}t</span>
+                  <span className={cn("ml-auto", REVIEW_CLASS[c.review])}>● {c.review}</span>
+                </span>
+                <span lang="lo" className="mt-1 block truncate text-sm">
+                  {c.content.slice(0, 80)}
+                </span>
+              </button>
             </li>
           ))}
         </ul>
@@ -239,13 +241,19 @@ export function ReviewClient() {
                 >
                   ✎ Edit (e)
                 </Button>
-                <Button size="sm" variant="destructive" onClick={() => applyAction(current, "reject")}>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => applyAction(current, "reject")}
+                >
                   ✗ Reject (r)
                 </Button>
                 <span
                   className={cn(
                     "ml-auto text-sm",
-                    current.embedded ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground",
+                    current.embedded
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-muted-foreground",
                   )}
                 >
                   {current.embedded ? "embedded" : "not embedded"}
@@ -262,14 +270,20 @@ export function ReviewClient() {
                   <h4 className="mt-4 mb-1 text-sm font-medium text-amber-600 dark:text-amber-400">
                     content_norm (normalization changed this)
                   </h4>
-                  <pre lang="lo" className="text-muted-foreground font-sans text-sm whitespace-pre-wrap">
+                  <pre
+                    lang="lo"
+                    className="text-muted-foreground font-sans text-sm whitespace-pre-wrap"
+                  >
                     {current.contentNorm}
                   </pre>
                 </>
               )}
 
               <h4 className="mt-4 mb-1 text-sm font-medium">content_seg (tsvector input)</h4>
-              <pre lang="lo" className="text-muted-foreground font-sans text-xs whitespace-pre-wrap">
+              <pre
+                lang="lo"
+                className="text-muted-foreground font-sans text-xs whitespace-pre-wrap"
+              >
                 {current.contentSeg}
               </pre>
 

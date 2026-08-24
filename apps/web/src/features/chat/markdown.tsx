@@ -15,8 +15,8 @@
  * Anything unrecognised falls through as literal text, never as an exception.
  */
 
-import { useState, type JSX, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
+import { type JSX, type ReactNode, useState } from "react";
 
 export type CiteHandler = (n: number) => void;
 
@@ -144,7 +144,8 @@ function tableCells(line: string): string[] {
 }
 
 const isTableRow = (l: string): boolean => /\|/.test(l) && l.trim().startsWith("|");
-const isTableDivider = (l: string): boolean => /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(l) && l.includes("-");
+const isTableDivider = (l: string): boolean =>
+  /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(l) && l.includes("-");
 const isHr = (l: string): boolean => /^\s*([-*_])(\s*\1){2,}\s*$/.test(l) && !l.includes("|");
 
 const LIST_ITEM = /^(\s*)([-*•]|\d+[.)])\s+(.*)$/;
@@ -171,7 +172,12 @@ function buildLevel(
       if (nodes.length > 0) nodes[nodes.length - 1]!.children.push(...deeper);
       continue;
     }
-    const node: ListNode = { ordered: it.ordered, content: it.content, checked: it.checked, children: [] };
+    const node: ListNode = {
+      ordered: it.ordered,
+      content: it.content,
+      checked: it.checked,
+      children: [],
+    };
     pos.i++;
     if (pos.i < items.length && items[pos.i]!.indent > indent) {
       node.children = buildLevel(items, pos, items[pos.i]!.indent);
@@ -181,7 +187,11 @@ function buildLevel(
   return nodes;
 }
 
-function renderNodes(nodes: readonly ListNode[], onCite: CiteHandler, keyBase: string): JSX.Element {
+function renderNodes(
+  nodes: readonly ListNode[],
+  onCite: CiteHandler,
+  keyBase: string,
+): JSX.Element {
   const ordered = nodes[0]?.ordered ?? false;
   const ListTag = ordered ? "ol" : "ul";
   return (
@@ -275,9 +285,8 @@ export function renderMarkdown(text: string, onCite: CiteHandler): ReactNode {
     // The generator sometimes prefixes the header line with inline text — typically a
     // citation, `[2] | ລຳດັບ | … |` — so accept any line whose pipe-part is followed by a
     // divider, and render the prefix as its own inline paragraph above the table.
-    const headerPipeAt = isTableDivider(lines[i + 1] ?? "") && line.trimEnd().endsWith("|")
-      ? line.indexOf("|")
-      : -1;
+    const headerPipeAt =
+      isTableDivider(lines[i + 1] ?? "") && line.trimEnd().endsWith("|") ? line.indexOf("|") : -1;
     if (headerPipeAt >= 0 && line.slice(headerPipeAt).split("|").length > 2) {
       const prefix = line.slice(0, headerPipeAt).trim();
       if (prefix) {
@@ -300,7 +309,11 @@ export function renderMarkdown(text: string, onCite: CiteHandler): ReactNode {
             <thead className="bg-muted/60">
               <tr>
                 {header.map((h, c) => (
-                  <th key={c} lang="lo" className="border-b border-border px-3 py-2 text-left font-semibold">
+                  <th
+                    key={c}
+                    lang="lo"
+                    className="border-b border-border px-3 py-2 text-left font-semibold"
+                  >
                     {renderInline(h, onCite, `${key}-h${c}`)}
                   </th>
                 ))}
@@ -325,7 +338,12 @@ export function renderMarkdown(text: string, onCite: CiteHandler): ReactNode {
 
     // Lists — a run of consecutive items at any indentation, nested by leading whitespace.
     if (LIST_ITEM.test(line)) {
-      const items: { indent: number; ordered: boolean; content: string; checked: boolean | null }[] = [];
+      const items: {
+        indent: number;
+        ordered: boolean;
+        content: string;
+        checked: boolean | null;
+      }[] = [];
       while (i < lines.length) {
         const m = LIST_ITEM.exec(lines[i] ?? "");
         if (!m) break;
@@ -353,7 +371,11 @@ export function renderMarkdown(text: string, onCite: CiteHandler): ReactNode {
         i++;
       }
       blocks.push(
-        <blockquote key={key} lang="lo" className="my-3 border-s-2 border-border ps-4 text-muted-foreground italic">
+        <blockquote
+          key={key}
+          lang="lo"
+          className="my-3 border-s-2 border-border ps-4 text-muted-foreground italic"
+        >
           {renderInline(quoted.join("\n"), onCite, key)}
         </blockquote>,
       );

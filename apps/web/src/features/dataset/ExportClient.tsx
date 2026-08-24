@@ -1,11 +1,10 @@
 "use client";
 
-import { useState } from "react";
-
 import { Button } from "@arnfar/ui/components/button";
 import { Input } from "@arnfar/ui/components/input";
+import { useState } from "react";
 
-import { runExport, type ExportResult } from "./api";
+import { type ExportResult, runExport } from "./api";
 
 export function ExportClient() {
   const [version, setVersion] = useState("0.2.0");
@@ -18,15 +17,20 @@ export function ExportClient() {
       <h2 className="text-lg font-semibold">Export dataset</h2>
       <p className="text-muted-foreground mt-1 text-sm">
         Writes an immutable, versioned dataset to{" "}
-        <code className="bg-muted rounded px-1">datasets/lao-accounting/vX.Y.Z/</code>. Verified rows
-        only; rejected chunks and (when shareable) client-confidential rows are excluded; QA is split
-        by document.
+        <code className="bg-muted rounded px-1">datasets/lao-accounting/vX.Y.Z/</code>. Verified
+        rows only; rejected chunks and (when shareable) client-confidential rows are excluded; QA is
+        split by document.
       </p>
 
       <div className="my-4 flex items-center gap-3">
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex items-center gap-2 text-sm" htmlFor="export-version">
           version
-          <Input value={version} onChange={(e) => setVersion(e.target.value)} className="w-24" />
+          <Input
+            id="export-version"
+            value={version}
+            onChange={(e) => setVersion(e.target.value)}
+            className="w-24"
+          />
         </label>
         <label className="flex items-center gap-2 text-sm">
           <input
@@ -68,7 +72,9 @@ export function ExportClient() {
                   <tr key={f.name} className="border-b last:border-0">
                     <td className="p-2">{f.name}</td>
                     <td className="p-2">{f.records}</td>
-                    <td className="text-muted-foreground p-2 font-mono">{f.sha256.slice(0, 16)}…</td>
+                    <td className="text-muted-foreground p-2 font-mono">
+                      {f.sha256.slice(0, 16)}…
+                    </td>
                   </tr>
                 ))}
               </tbody>

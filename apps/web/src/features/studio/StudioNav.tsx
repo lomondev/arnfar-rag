@@ -1,9 +1,8 @@
 "use client";
 
+import { cn } from "@arnfar/ui/lib/utils";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-
-import { cn } from "@arnfar/ui/lib/utils";
 
 const TABS = [
   { href: "/studio", label: "Overview" },
@@ -34,7 +33,7 @@ export function StudioNav() {
         </Link>
 
         {/* Ten tabs will not fit a phone. Scroll them rather than wrapping — a
-          * two-row capsule loses the segmented-control read entirely. */}
+         * two-row capsule loses the segmented-control read entirely. */}
         <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {TABS.map((t) => {
             const active = pathname === t.href;

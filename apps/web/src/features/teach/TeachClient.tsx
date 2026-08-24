@@ -1,20 +1,17 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUp, Check, Flag, Pencil, Plus, Square, X } from "lucide-react";
-
 import { Button } from "@arnfar/ui/components/button";
 import { Input } from "@arnfar/ui/components/input";
 import { Select } from "@arnfar/ui/components/select";
 import { cn } from "@arnfar/ui/lib/utils";
-
+import { ArrowUp, Check, Flag, Pencil, Plus, Square, X } from "lucide-react";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { promoteToDataset, reportWrong } from "@/features/chat/chatApi";
 import { renderMarkdown } from "@/features/chat/markdown";
 import type { StoredMessage, StoredSource } from "@/features/chat/storage";
-import { promoteToDataset, reportWrong } from "@/features/chat/chatApi";
-
-import { useKnowledgeKinds } from "@/features/studio/useCollections";
 import { shortModel, useModels } from "@/features/chat/useModels";
+import { useKnowledgeKinds } from "@/features/studio/useCollections";
 
 const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
 
@@ -57,7 +54,8 @@ const UI = {
     wrong: "Wrong",
     reported: "Reported — sent to review",
     abstained: "Not in the dataset — the AI won't guess",
-    abstainedHint: "Write the answer with citations on the QA page, or add the source document first.",
+    abstainedHint:
+      "Write the answer with citations on the QA page, or add the source document first.",
     writeQa: "Write QA by hand",
     sources: "Sources",
     noSources: "None yet — ask first; the sources the AI used appear here",
@@ -197,6 +195,7 @@ export function TeachClient() {
         if (done) break;
         buf += dec.decode(value, { stream: true });
         let sep: number;
+        // biome-ignore lint/suspicious/noAssignInExpressions: standard incremental-scan idiom; splitting it duplicates the advance.
         while ((sep = buf.indexOf("\n\n")) >= 0) {
           const frame = buf.slice(0, sep);
           buf = buf.slice(sep + 2);
@@ -351,6 +350,7 @@ export function TeachClient() {
                             setEditing((cur) => (cur ? { ...cur, text: e.target.value } : cur))
                           }
                           rows={6}
+                          // biome-ignore lint/a11y/noAutofocus: this textarea only mounts in response to the user clicking Edit; focus must follow that click.
                           autoFocus
                           className="w-full resize-y bg-transparent text-[1.02rem] leading-[1.7] outline-none"
                         />
@@ -435,7 +435,11 @@ export function TeachClient() {
                             onClick={() => void report(i)}
                             className="text-muted-foreground gap-1.5"
                           >
-                            {msg.reported ? <Check className="size-3.5" /> : <Flag className="size-3.5" />}
+                            {msg.reported ? (
+                              <Check className="size-3.5" />
+                            ) : (
+                              <Flag className="size-3.5" />
+                            )}
                             {msg.reported ? t.reported : t.wrong}
                           </Button>
                         </div>
@@ -500,9 +504,14 @@ export function TeachClient() {
               className="placeholder:text-muted-foreground max-h-[200px] w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[1.02rem] leading-[1.6] outline-none"
             />
             <div className="text-muted-foreground flex items-center gap-2 px-3 pb-2.5 text-xs">
-              <label className="flex items-center gap-1" title="Chunks retrieved per question">
+              <label
+                className="flex items-center gap-1"
+                htmlFor="teach-k"
+                title="Chunks retrieved per question"
+              >
                 k
                 <Input
+                  id="teach-k"
                   type="number"
                   min={1}
                   max={20}
@@ -602,7 +611,10 @@ export function TeachClient() {
                     {s.headingPath.join(" › ")}
                   </p>
                 )}
-                <p lang="lo" className="mt-1.5 line-clamp-4 text-[0.85rem] leading-[1.7] whitespace-pre-wrap">
+                <p
+                  lang="lo"
+                  className="mt-1.5 line-clamp-4 text-[0.85rem] leading-[1.7] whitespace-pre-wrap"
+                >
                   {s.content}
                 </p>
                 <div className="text-muted-foreground mt-1.5 flex gap-2 text-[0.7rem]">

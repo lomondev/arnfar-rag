@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
-
 import { Button } from "@arnfar/ui/components/button";
 import { Textarea } from "@arnfar/ui/components/textarea";
+import { useState } from "react";
 
 const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
 
@@ -68,7 +67,10 @@ export function LaoCheckClient() {
       </div>
 
       {error && (
-        <p role="alert" className="border-destructive/40 bg-destructive/10 text-destructive mb-3 rounded-lg border px-3 py-2 text-sm">
+        <p
+          role="alert"
+          className="border-destructive/40 bg-destructive/10 text-destructive mb-3 rounded-lg border px-3 py-2 text-sm"
+        >
           {error}
         </p>
       )}
@@ -116,7 +118,9 @@ export function LaoCheckClient() {
           </section>
 
           <section>
-            <h4 className={`mb-1 font-medium ${result.terminology.length ? "text-destructive" : ""}`}>
+            <h4
+              className={`mb-1 font-medium ${result.terminology.length ? "text-destructive" : ""}`}
+            >
               Terminology violations ({result.terminology.length})
             </h4>
             {result.terminology.length === 0 ? (
@@ -141,7 +145,10 @@ export function LaoCheckClient() {
                 — AI suggestion, review before use
               </span>
             </h4>
-            <pre lang="lo" className="bg-muted rounded-lg p-3 font-sans text-base whitespace-pre-wrap">
+            <pre
+              lang="lo"
+              className="bg-muted rounded-lg p-3 font-sans text-base whitespace-pre-wrap"
+            >
               {result.rewrite}
             </pre>
           </section>

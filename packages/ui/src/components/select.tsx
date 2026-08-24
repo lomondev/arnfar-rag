@@ -1,6 +1,5 @@
-import * as React from "react";
-
 import { cn } from "@arnfar/ui/lib/utils";
+import type * as React from "react";
 
 /** Lightweight styled native <select> — enough for the Studio's simple pickers
  *  without pulling a full listbox primitive. */

@@ -1,7 +1,5 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-
 import { Badge } from "@arnfar/ui/components/badge";
 import { Button } from "@arnfar/ui/components/button";
 import {
@@ -15,14 +13,15 @@ import {
 import { Input } from "@arnfar/ui/components/input";
 import { Label } from "@arnfar/ui/components/label";
 import { Select } from "@arnfar/ui/components/select";
+import { useCallback, useEffect, useState } from "react";
 
 import {
+  type Account,
   createAccount,
   deleteAccount,
   fetchAccounts,
   updateAccount,
   verifyAccount,
-  type Account,
 } from "./api";
 
 const CLASSES = ["asset", "liability", "equity", "revenue", "expense"] as const;
@@ -94,16 +93,32 @@ function AccountFormDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
               <Label htmlFor="acc-code">Code</Label>
-              <Input id="acc-code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="1010" />
+              <Input
+                id="acc-code"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="1010"
+              />
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="acc-parent">Parent code (optional)</Label>
-              <Input id="acc-parent" value={parentCode} onChange={(e) => setParentCode(e.target.value)} placeholder="10" />
+              <Input
+                id="acc-parent"
+                value={parentCode}
+                onChange={(e) => setParentCode(e.target.value)}
+                placeholder="10"
+              />
             </div>
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="acc-name-lo">Name (Lao)</Label>
-            <Input id="acc-name-lo" lang="lo" className="text-base" value={nameLo} onChange={(e) => setNameLo(e.target.value)} />
+            <Input
+              id="acc-name-lo"
+              lang="lo"
+              className="text-base"
+              value={nameLo}
+              onChange={(e) => setNameLo(e.target.value)}
+            />
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="acc-name-en">Name (English, optional)</Label>
@@ -112,7 +127,11 @@ function AccountFormDialog({
           <div className="grid grid-cols-3 gap-3">
             <div className="grid gap-1.5">
               <Label htmlFor="acc-class">Class</Label>
-              <Select id="acc-class" value={accountClass} onChange={(e) => setAccountClass(e.target.value)}>
+              <Select
+                id="acc-class"
+                value={accountClass}
+                onChange={(e) => setAccountClass(e.target.value)}
+              >
                 {CLASSES.map((c) => (
                   <option key={c} value={c}>
                     {c}
@@ -122,7 +141,11 @@ function AccountFormDialog({
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="acc-balance">Normal balance</Label>
-              <Select id="acc-balance" value={normalBalance} onChange={(e) => setNormalBalance(e.target.value)}>
+              <Select
+                id="acc-balance"
+                value={normalBalance}
+                onChange={(e) => setNormalBalance(e.target.value)}
+              >
                 {BALANCES.map((b) => (
                   <option key={b} value={b}>
                     {b}
@@ -132,7 +155,11 @@ function AccountFormDialog({
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="acc-statement">Statement</Label>
-              <Select id="acc-statement" value={statement} onChange={(e) => setStatement(e.target.value)}>
+              <Select
+                id="acc-statement"
+                value={statement}
+                onChange={(e) => setStatement(e.target.value)}
+              >
                 {STATEMENTS.map((s) => (
                   <option key={s} value={s}>
                     {s}
@@ -165,7 +192,9 @@ export function AccountsClient() {
   const [deleting, setDeleting] = useState<Account | null>(null);
 
   const load = useCallback(() => {
-    fetchAccounts().then(setAccounts).catch((e) => setStatus(`error: ${e.message}`));
+    fetchAccounts()
+      .then(setAccounts)
+      .catch((e) => setStatus(`error: ${e.message}`));
   }, []);
   useEffect(load, [load]);
 

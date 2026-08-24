@@ -1,7 +1,5 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-
 import { Badge } from "@arnfar/ui/components/badge";
 import { Button } from "@arnfar/ui/components/button";
 import {
@@ -15,6 +13,7 @@ import {
 import { Input } from "@arnfar/ui/components/input";
 import { Label } from "@arnfar/ui/components/label";
 import { Textarea } from "@arnfar/ui/components/textarea";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   createTerm,
@@ -22,11 +21,15 @@ import {
   fetchTerms,
   mineGlossary,
   patchTerm,
-  verifyTerm,
   type Term,
+  verifyTerm,
 } from "./api";
 
-const splitList = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
+const splitList = (s: string) =>
+  s
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
 
 /** Add/edit a glossary term. termLo is fixed after creation (it is the unique key
  *  and drives segmentation); everything else is editable. */
@@ -174,7 +177,9 @@ export function GlossaryClient() {
   const [deleting, setDeleting] = useState<Term | null>(null);
 
   const load = useCallback(() => {
-    fetchTerms().then(setTerms).catch((e) => setStatus(`error: ${e.message}`));
+    fetchTerms()
+      .then(setTerms)
+      .catch((e) => setStatus(`error: ${e.message}`));
   }, []);
   useEffect(load, [load]);
 

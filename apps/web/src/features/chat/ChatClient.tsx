@@ -1,13 +1,16 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@arnfar/ui/components/button";
+import { Input } from "@arnfar/ui/components/input";
+import { Select } from "@arnfar/ui/components/select";
+import { cn } from "@arnfar/ui/lib/utils";
 import {
   ArrowUp,
   BookOpen,
-  Globe,
   Check,
   Copy,
   Flag,
+  Globe,
   Loader2,
   Moon,
   PanelLeft,
@@ -20,30 +23,24 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-
-import { Button } from "@arnfar/ui/components/button";
-import { Input } from "@arnfar/ui/components/input";
-import { Select } from "@arnfar/ui/components/select";
-import { cn } from "@arnfar/ui/lib/utils";
-
-import { renderMarkdown } from "./markdown";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useKnowledgeKinds } from "@/features/studio/useCollections";
 import {
-  groupByRecency,
-  titleFrom,
-  type Conversation,
-  type StoredMessage,
-  type StoredSource,
-} from "./storage";
-import {
+  type ConversationSummary,
   deleteConversation as deleteConversationApi,
   getConversation,
   listConversations,
   promoteToDataset,
   reportWrong,
-  type ConversationSummary,
 } from "./chatApi";
-
-import { useKnowledgeKinds } from "@/features/studio/useCollections";
+import { renderMarkdown } from "./markdown";
+import {
+  type Conversation,
+  groupByRecency,
+  type StoredMessage,
+  type StoredSource,
+  titleFrom,
+} from "./storage";
 import { shortModel, useModels } from "./useModels";
 
 const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
@@ -172,7 +169,9 @@ export function ChatClient() {
 
   // Load the conversation list from the server after mount (avoid hydration mismatch).
   useEffect(() => {
-    void listConversations().then(setSummaries).catch(() => setSummaries([]));
+    void listConversations()
+      .then(setSummaries)
+      .catch(() => setSummaries([]));
     const storedLang = localStorage.getItem("arnfar.chat.lang");
     if (storedLang === "lo" || storedLang === "en") setLang(storedLang);
     const storedModel = localStorage.getItem("arnfar.chat.model");
@@ -249,16 +248,17 @@ export function ChatClient() {
   }, []);
 
   /** Patch a message in the active thread by index. Pure updaters only (StrictMode). */
-  const patchMessage = useCallback(
-    (idx: number, patch: (m: StoredMessage) => StoredMessage) => {
-      setActiveThread((cur) =>
-        cur
-          ? { ...cur, updatedAt: Date.now(), messages: cur.messages.map((m, j) => (j === idx ? patch(m) : m)) }
-          : cur,
-      );
-    },
-    [],
-  );
+  const patchMessage = useCallback((idx: number, patch: (m: StoredMessage) => StoredMessage) => {
+    setActiveThread((cur) =>
+      cur
+        ? {
+            ...cur,
+            updatedAt: Date.now(),
+            messages: cur.messages.map((m, j) => (j === idx ? patch(m) : m)),
+          }
+        : cur,
+    );
+  }, []);
 
   async function send(question: string) {
     const q = question.trim();
@@ -340,6 +340,7 @@ export function ChatClient() {
         buf += dec.decode(value, { stream: true });
 
         let sep: number;
+        // biome-ignore lint/suspicious/noAssignInExpressions: the assign-and-test loop is the standard incremental-scan idiom; splitting it duplicates the advance.
         while ((sep = buf.indexOf("\n\n")) >= 0) {
           const frame = buf.slice(0, sep);
           buf = buf.slice(sep + 2);
@@ -352,9 +353,13 @@ export function ChatClient() {
             // and refresh the sidebar so the new thread appears.
             serverConvId = ev.conversationId;
             streamConvIdRef.current = serverConvId;
-            setActiveThread((cur) => (cur && cur.id === "pending" ? { ...cur, id: serverConvId! } : cur));
+            setActiveThread((cur) =>
+              cur && cur.id === "pending" ? { ...cur, id: serverConvId! } : cur,
+            );
             setActiveId(serverConvId);
-            void listConversations().then(setSummaries).catch(() => {});
+            void listConversations()
+              .then(setSummaries)
+              .catch(() => {});
           } else if (ev.type === "citations") {
             patchMessage(assistantIdx, (m) => ({ ...m, sources: ev.sources ?? [] }));
             setPhaseSources(ev.sources?.length ?? 0);
@@ -378,7 +383,10 @@ export function ChatClient() {
         }
       }
       // After the stream finishes, refresh the sidebar ordering (updatedAt bumped server-side).
-      if (serverConvId) void listConversations().then(setSummaries).catch(() => {});
+      if (serverConvId)
+        void listConversations()
+          .then(setSummaries)
+          .catch(() => {});
     } catch (e) {
       if ((e as Error).name !== "AbortError") {
         flushPending();
@@ -565,8 +573,8 @@ export function ChatClient() {
 
       <main className="relative flex min-w-0 flex-1 flex-col">
         {/* Absolute, not in-flow: the thread scrolls *underneath* the bar, which is the
-          * whole point of a glass toolbar. Its height is fixed, so the mask offset on the
-          * scroll container below can be a constant. */}
+         * whole point of a glass toolbar. Its height is fixed, so the mask offset on the
+         * scroll container below can be a constant. */}
         <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center gap-2 px-3 py-2.5">
           <div className="glass glass-blur-lg pointer-events-auto flex h-9 items-center gap-2 rounded-2xl ps-1.5 pe-3">
             {!sidebarOpen && (
@@ -605,7 +613,9 @@ export function ChatClient() {
                 <p lang="lo" className="text-xl font-semibold">
                   {t.greeting}
                 </p>
-                <p className="text-muted-foreground mt-1.5 text-sm">{modelLabel} · {t.subtitle}</p>
+                <p className="text-muted-foreground mt-1.5 text-sm">
+                  {modelLabel} · {t.subtitle}
+                </p>
               </div>
             ) : (
               messages.map((msg, i) =>
@@ -622,9 +632,17 @@ export function ChatClient() {
                   <div key={i} className="mb-8">
                     <div className="text-[1.02rem]">
                       {msg.content ? (
-                        <MessageBody content={msg.content} sources={msg.sources} onOpenSource={setPanel} />
+                        <MessageBody
+                          content={msg.content}
+                          sources={msg.sources}
+                          onOpenSource={setPanel}
+                        />
                       ) : streaming && i === messages.length - 1 ? (
-                        <StreamProgress phase={phase ?? "searching"} sources={phaseSources} labels={t} />
+                        <StreamProgress
+                          phase={phase ?? "searching"}
+                          sources={phaseSources}
+                          labels={t}
+                        />
                       ) : (
                         <span className="inline-flex gap-1 py-2">
                           <Dot delay="0ms" />
@@ -719,9 +737,14 @@ export function ChatClient() {
             />
 
             <div className="text-muted-foreground flex items-center gap-2 px-3 pb-2.5 text-xs">
-              <label className="flex items-center gap-1" title="Chunks retrieved per question">
+              <label
+                className="flex items-center gap-1"
+                htmlFor="chat-k"
+                title="Chunks retrieved per question"
+              >
                 k
                 <Input
+                  id="chat-k"
                   type="number"
                   min={1}
                   max={20}
@@ -866,7 +889,7 @@ export function ChatClient() {
               )}
             </dl>
             {/* The pristine `content` column, verbatim — never reflowed or normalised.
-              * This pane is what a reviewer checks the answer against. */}
+             * This pane is what a reviewer checks the answer against. */}
             <p
               lang="lo"
               className="border-border mt-3 border-t pt-3 text-[0.95rem] leading-[1.8] whitespace-pre-wrap"

@@ -1,8 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-
 import { Button } from "@arnfar/ui/components/button";
+import { useCallback, useEffect, useState } from "react";
 
 const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
 
@@ -96,13 +95,21 @@ export function EvalClient() {
         <table className="w-full text-sm">
           <thead className="text-muted-foreground border-b text-left">
             <tr>
-              {["retriever", "gen_model", "n", "recall@5", "recall@10", "MRR", "faithful", "p95 ms", "notes"].map(
-                (h) => (
-                  <th key={h} className="p-2 font-medium">
-                    {h}
-                  </th>
-                ),
-              )}
+              {[
+                "retriever",
+                "gen_model",
+                "n",
+                "recall@5",
+                "recall@10",
+                "MRR",
+                "faithful",
+                "p95 ms",
+                "notes",
+              ].map((h) => (
+                <th key={h} className="p-2 font-medium">
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>

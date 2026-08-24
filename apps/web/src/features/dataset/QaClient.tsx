@@ -1,7 +1,5 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-
 import { Badge } from "@arnfar/ui/components/badge";
 import { Button } from "@arnfar/ui/components/button";
 import {
@@ -16,17 +14,18 @@ import { Input } from "@arnfar/ui/components/input";
 import { Label } from "@arnfar/ui/components/label";
 import { Select } from "@arnfar/ui/components/select";
 import { Textarea } from "@arnfar/ui/components/textarea";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   assignSplits,
   createQa,
   deleteQa,
   fetchQa,
+  type QaPair,
+  type SearchHit,
   searchChunks,
   updateQa,
   verifyQa,
-  type QaPair,
-  type SearchHit,
 } from "./api";
 
 const SPLIT_VARIANT: Record<string, "default" | "secondary" | "muted" | "outline"> = {
@@ -87,7 +86,10 @@ function QaFormDialog({
         ...(questionEn.trim() ? { questionEn: questionEn.trim() } : {}),
         ...(answerEn.trim() ? { answerEn: answerEn.trim() } : {}),
         citationIds: citations.map((c) => c.id),
-        tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+        tags: tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
         difficulty,
       };
       if (initial) await updateQa(initial.id, body);
@@ -137,7 +139,11 @@ function QaFormDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
               <Label htmlFor="qa-q-en">Question (English gloss, optional)</Label>
-              <Input id="qa-q-en" value={questionEn} onChange={(e) => setQuestionEn(e.target.value)} />
+              <Input
+                id="qa-q-en"
+                value={questionEn}
+                onChange={(e) => setQuestionEn(e.target.value)}
+              />
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="qa-a-en">Answer (English gloss, optional)</Label>
@@ -161,7 +167,12 @@ function QaFormDialog({
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="qa-tags">Tags (comma-separated)</Label>
-              <Input id="qa-tags" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="vat, depreciation" />
+              <Input
+                id="qa-tags"
+                value={tags}
+                onChange={(e) => setTags(e.target.value)}
+                placeholder="vat, depreciation"
+              />
             </div>
           </div>
 
@@ -262,7 +273,9 @@ export function QaClient() {
   const [deleting, setDeleting] = useState<QaPair | null>(null);
 
   const load = useCallback(() => {
-    fetchQa().then(setQa).catch((e) => setStatus(`error: ${e.message}`));
+    fetchQa()
+      .then(setQa)
+      .catch((e) => setStatus(`error: ${e.message}`));
   }, []);
   useEffect(load, [load]);
 

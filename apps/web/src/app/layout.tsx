@@ -1,5 +1,5 @@
-import type { Metadata } from "next";
 import { phetsarathFontFaceCss } from "@arnfar/ui";
+import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -22,9 +22,7 @@ try {
 } catch {}
 `;
 
-export default function RootLayout({
-  children,
-}: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="lo" suppressHydrationWarning>
       <head>
@@ -33,7 +31,11 @@ export default function RootLayout({
          * These @font-face rules declare the family that Tailwind's --font-sans names
          * (packages/ui/src/styles/globals.css); the base layer applies it to <html>.
          */}
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: both strings are first-party
+         * constants from this repo (a generated @font-face block and the literal above) —
+         * no user input reaches either, and <style>/<script> have no React equivalent. */}
         <style dangerouslySetInnerHTML={{ __html: phetsarathFontFaceCss() }} />
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: see above. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>
       <body>
