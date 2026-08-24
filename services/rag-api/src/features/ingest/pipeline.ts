@@ -5,12 +5,12 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "../../lib/db.ts";
 import { newId } from "../../lib/ids.ts";
-import { normalize, segment, type ExtractBlock } from "../../lib/sidecars.ts";
+import { type ExtractBlock, normalize, segment } from "../../lib/sidecars.ts";
 import { originalKey, put, sha256 } from "../../lib/storage.ts";
+import { fixLaoDefects } from "../lao/clean.ts";
+import { inferAccountAttrs } from "./accounts.ts";
 import { chunkBlocks, type SegBlock } from "./chunker.ts";
 import { extractFile } from "./extract.ts";
-import { inferAccountAttrs } from "./accounts.ts";
-import { fixLaoDefects } from "../lao/clean.ts";
 
 export interface Tenant {
   hfId: string;
@@ -50,7 +50,10 @@ export function blockText(b: ExtractBlock): string {
   return b.text ?? "";
 }
 
-async function setStatus(documentId: string, status: (typeof schema.docStatus.enumValues)[number]): Promise<void> {
+async function setStatus(
+  documentId: string,
+  status: (typeof schema.docStatus.enumValues)[number],
+): Promise<void> {
   await db()
     .update(schema.ragDocument)
     .set({ status, updatedAt: new Date() })
@@ -91,26 +94,28 @@ export async function ingestDocx(input: IngestInput): Promise<IngestResult> {
   await put(key, bytes);
 
   const documentId = newId();
-  await db().insert(schema.ragDocument).values({
-    id: documentId,
-    hfId: tenant.hfId,
-    companyId: tenant.companyId,
-    branchId: tenant.branchId ?? null,
-    collection,
-    title: input.title ?? filename,
-    sourceFilename: filename,
-    sourceUri: key,
-    lang: "mixed",
-    status: "extracting",
-    contentSha256: sha,
-    authority: input.authority ?? null,
-    effectiveDate: input.effectiveDate ?? null,
-    license: input.license ?? "internal",
-    meta: {},
-  });
+  await db()
+    .insert(schema.ragDocument)
+    .values({
+      id: documentId,
+      hfId: tenant.hfId,
+      companyId: tenant.companyId,
+      branchId: tenant.branchId ?? null,
+      collection,
+      title: input.title ?? filename,
+      sourceFilename: filename,
+      sourceUri: key,
+      lang: "mixed",
+      status: "extracting",
+      contentSha256: sha,
+      authority: input.authority ?? null,
+      effectiveDate: input.effectiveDate ?? null,
+      license: input.license ?? "internal",
+      meta: {},
+    });
 
   // 3. extract — .md in-process, .docx via the docx-extractor sidecar.
-  let extraction;
+  let extraction: Awaited<ReturnType<typeof extractFile>>;
   try {
     extraction = await extractFile(bytes, filename);
   } catch (err) {
@@ -141,7 +146,7 @@ export async function ingestDocx(input: IngestInput): Promise<IngestResult> {
     // The raw `text` still flows to `content` untouched.
     const s = await segment(fixLaoDefects(text));
     const meta: Record<string, unknown> = {};
-    if (b.amounts && b.amounts.length) meta.amounts = b.amounts;
+    if (b.amounts?.length) meta.amounts = b.amounts;
     if (b.type === "account_row") {
       meta.account_code = b.code;
       meta.name_en = b.name_en ?? null;
@@ -230,14 +235,16 @@ export async function ingestDocx(input: IngestInput): Promise<IngestResult> {
   });
 
   // 8. audit event (outbox — no broker consumes it; decision B).
-  await db().insert(schema.outboxEvent).values({
-    id: newId(),
-    hfId: tenant.hfId,
-    aggregateType: "rag_document",
-    aggregateId: documentId,
-    eventType: "document.chunked",
-    payload: { chunkCount: rows.length },
-  });
+  await db()
+    .insert(schema.outboxEvent)
+    .values({
+      id: newId(),
+      hfId: tenant.hfId,
+      aggregateType: "rag_document",
+      aggregateId: documentId,
+      eventType: "document.chunked",
+      payload: { chunkCount: rows.length },
+    });
 
   const byKind: Record<string, number> = {};
   for (const c of chunks) byKind[c.kind] = (byKind[c.kind] ?? 0) + 1;

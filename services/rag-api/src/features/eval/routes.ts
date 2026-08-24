@@ -1,12 +1,11 @@
 import { schema } from "@arnfar/db";
 import { and, desc, eq } from "drizzle-orm";
 import { Elysia, t } from "elysia";
-
-import { env } from "../../lib/env.ts";
 import { db } from "../../lib/db.ts";
+import { env } from "../../lib/env.ts";
 import { devTenant } from "../../lib/tenant.ts";
-import { runEval } from "./runner.ts";
 import type { Retriever } from "./retrievers.ts";
+import { runEval } from "./runner.ts";
 
 const RETRIEVERS: Retriever[] = ["dense", "lexical", "hybrid-rrf"];
 
@@ -17,10 +16,7 @@ export const evalRoutes = new Elysia({ prefix: "/eval" })
       .select()
       .from(schema.evalRun)
       .where(
-        and(
-          eq(schema.evalRun.hfId, tenant.hfId),
-          eq(schema.evalRun.companyId, tenant.companyId),
-        ),
+        and(eq(schema.evalRun.hfId, tenant.hfId), eq(schema.evalRun.companyId, tenant.companyId)),
       )
       .orderBy(desc(schema.evalRun.createdAt))
       .limit(50);

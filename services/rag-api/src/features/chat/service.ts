@@ -4,7 +4,10 @@ import { and, eq } from "drizzle-orm";
 
 import { db } from "../../lib/db.ts";
 import { generateStream } from "../../lib/ollama.ts";
+import { detectAndRunErpTools, erpToSources } from "../erp/service.ts";
 import { search } from "../search/service.ts";
+import { webSearch as searchWeb } from "../websearch/service.ts";
+import { condenseQuery } from "./condense.ts";
 import {
   CONTEXT_WINDOW,
   createConversation,
@@ -13,10 +16,13 @@ import {
   titleFrom,
   trimForHistory,
 } from "./conversation.ts";
-import { condenseQuery } from "./condense.ts";
-import { buildSystemPrompt, buildPrompt, toSources, webToSources, type CitationSource } from "./prompt.ts";
-import { webSearch as searchWeb } from "../websearch/service.ts";
-import { detectAndRunErpTools, erpToSources } from "../erp/service.ts";
+import {
+  buildPrompt,
+  buildSystemPrompt,
+  type CitationSource,
+  toSources,
+  webToSources,
+} from "./prompt.ts";
 
 export interface ChatParams {
   message: string;

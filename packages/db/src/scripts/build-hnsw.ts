@@ -9,8 +9,7 @@
  */
 import postgres from "postgres";
 
-const url =
-  process.env.DATABASE_URL ?? "postgres://arnfar:change-me-locally@localhost:5432/arnfar";
+const url = process.env.DATABASE_URL ?? "postgres://arnfar:change-me-locally@localhost:5432/arnfar";
 
 const sql = postgres(url, { max: 1 });
 
@@ -24,9 +23,7 @@ try {
   const exists = rows[0]?.exists ?? false;
 
   if (!exists) {
-    console.log(
-      "rag_chunk does not exist yet — schema phase has not landed. Nothing to index.",
-    );
+    console.log("rag_chunk does not exist yet — schema phase has not landed. Nothing to index.");
   } else {
     console.log("Building HNSW index rag_chunk_embedding_hnsw (halfvec_cosine_ops)…");
     // m=16, ef_construction=96 per spec §4. IF NOT EXISTS keeps it idempotent.

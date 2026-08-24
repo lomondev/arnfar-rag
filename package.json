@@ -2,7 +2,7 @@
   "name": "arnfar-ai",
   "version": "0.0.0",
   "private": true,
-  "description": "Arnfar AI — Lao accounting RAG + dataset platform (local-first, offline-capable)",
+  "description": "Arnfar AI \u2014 Lao accounting RAG + dataset platform (local-first, offline-capable)",
   "workspaces": [
     "apps/*",
     "services/rag-api",
@@ -17,12 +17,19 @@
     "status": "./scripts/dev.sh status",
     "stop": "./scripts/dev.sh stop",
     "reset": "./scripts/dev.sh reset",
-    "typecheck": "bun run --filter '*' typecheck",
-    "lint": "bun run --filter '*' lint",
+    "check": "bun run lint && bun run typecheck && bun run test && bun run check:templates",
+    "lint": "biome check . && ./scripts/py.sh ruff check . && ./scripts/py.sh ruff format --check .",
+    "lint:fix": "biome check --write . && ./scripts/py.sh ruff check --fix . && ./scripts/py.sh ruff format .",
+    "typecheck": "bun run --filter '*' typecheck && bun run typecheck:py",
+    "typecheck:py": "cd services/lao-nlp && ../../scripts/py.sh mypy --config-file ../../pyproject.toml app && cd ../docx-extractor && ../../scripts/py.sh mypy --config-file ../../pyproject.toml app",
+    "test": "bun test && bun run test:py",
+    "test:ts": "bun test",
+    "test:py": "cd services/lao-nlp && ../../scripts/py.sh pytest -c ../../pyproject.toml tests && cd ../docx-extractor && ../../scripts/py.sh pytest -c ../../pyproject.toml tests",
     "check:templates": "bun run scripts/check-templates.ts",
     "seed": "bun run seed/load.ts",
     "db:generate": "bun --env-file=.env run --filter '@arnfar/db' generate",
     "db:migrate": "bun --env-file=.env run --filter '@arnfar/db' migrate",
+    "db:app-role": "bun --env-file=.env run --filter '@arnfar/db' app-role",
     "db:index:hnsw": "bun --env-file=.env run --filter '@arnfar/db' index:hnsw",
     "dev:api": "bun --env-file=.env run --filter '@arnfar/rag-api' dev",
     "dev:web": "bun --env-file=.env run --filter '@arnfar/web' dev",
@@ -30,6 +37,7 @@
     "compose:down": "docker compose down"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.2.4",
     "@types/bun": "1.1.14",
     "typescript": "5.7.3"
   }

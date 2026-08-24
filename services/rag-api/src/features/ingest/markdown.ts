@@ -104,7 +104,9 @@ function decodeText(bytes: Uint8Array, warnings: string[]): string {
     warnings.push("NUL characters removed — file encoding looks damaged, please re-save as UTF-8");
   }
   if (countChar(text, "\uFFFD") > text.length / 20) {
-    throw new Error("ໄຟລ໌ບໍ່ແມ່ນ text ທີ່ອ່ານໄດ້ — ບັນທຶກເປັນ UTF-8 (.md) ກ່ອນ / file is not readable text, save it as UTF-8");
+    throw new Error(
+      "ໄຟລ໌ບໍ່ແມ່ນ text ທີ່ອ່ານໄດ້ — ບັນທຶກເປັນ UTF-8 (.md) ກ່ອນ / file is not readable text, save it as UTF-8",
+    );
   }
   return text;
 }
@@ -239,7 +241,14 @@ export function extractMarkdown(bytes: Uint8Array): ExtractResult {
       let j = i + 1;
       while (j < lines.length) {
         const l = lines[j]!;
-        if (!l.trim() || !/^\s{2,}/.test(l) || LIST_ITEM.test(l) || HEADING.test(l) || FENCE.test(l)) break;
+        if (
+          !l.trim() ||
+          !/^\s{2,}/.test(l) ||
+          LIST_ITEM.test(l) ||
+          HEADING.test(l) ||
+          FENCE.test(l)
+        )
+          break;
         text += `\n${l.trim()}`;
         j++;
       }

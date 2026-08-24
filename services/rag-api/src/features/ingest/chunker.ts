@@ -39,11 +39,7 @@ export interface Chunk {
 const samePath = (a: string[], b: string[]): boolean =>
   a.length === b.length && a.every((v, i) => v === b[i]);
 
-export function chunkBlocks(
-  blocks: SegBlock[],
-  maxTokens = 400,
-  overlapTokens = 60,
-): Chunk[] {
+export function chunkBlocks(blocks: SegBlock[], maxTokens = 400, overlapTokens = 60): Chunk[] {
   const chunks: Chunk[] = [];
   let acc: SegBlock[] = [];
   let accTokens = 0;
@@ -56,7 +52,10 @@ export function chunkBlocks(
       seq: seq++,
       kind,
       content: group.map((b) => b.text).join("\n"),
-      contentSeg: group.map((b) => b.seg).join(" ").trim(),
+      contentSeg: group
+        .map((b) => b.seg)
+        .join(" ")
+        .trim(),
       tokenCount: group.reduce((n, b) => n + b.tokens, 0),
       lang: first.lang,
       headingPath: first.headingPath,

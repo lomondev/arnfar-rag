@@ -94,15 +94,17 @@ export const reviewRoutes = new Elysia({ prefix: "/review" })
         })
         .where(eq(schema.ragChunk.id, params.id));
       // Re-queue embedding for the document.
-      await db().insert(schema.ingestJob).values({
-        id: newId(),
-        hfId: tenant.hfId,
-        companyId: tenant.companyId,
-        documentId: chunk.documentId,
-        kind: "embed",
-        status: "queued",
-        payload: { reason: "edit" },
-      });
+      await db()
+        .insert(schema.ingestJob)
+        .values({
+          id: newId(),
+          hfId: tenant.hfId,
+          companyId: tenant.companyId,
+          documentId: chunk.documentId,
+          kind: "embed",
+          status: "queued",
+          payload: { reason: "edit" },
+        });
       return { id: params.id, review: "edited", reembedQueued: true };
     },
     {

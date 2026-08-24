@@ -8,6 +8,8 @@ a chart of accounts additionally yields one account_row per data row.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
+from typing import Any
 
 from docx.document import Document as _Document
 from docx.oxml.table import CT_Tbl
@@ -28,7 +30,7 @@ from .models import (
 from .tables import cell_matrix, to_markdown
 
 
-def iter_block_items(document: _Document):
+def iter_block_items(document: _Document) -> Iterator[Paragraph | Table]:
     """Yield Paragraph and Table objects in true document order."""
     body = document.element.body
     for child in body.iterchildren():
@@ -54,10 +56,14 @@ def _is_list(paragraph: Paragraph) -> tuple[bool, int]:
     p = paragraph._p
     pPr = p.pPr
     if pPr is not None and pPr.numPr is not None:
-        ilvl = pPr.numPr.ilvl
+        # numPr is a raw lxml proxy (see tables.py) — .ilvl is real at runtime but
+        # invisible to mypy, which types the accessor as ZeroOrOne.
+        numPr: Any = pPr.numPr
+        ilvl = numPr.ilvl
         level = int(ilvl.val) if ilvl is not None and ilvl.val is not None else 0
         return True, level
-    if (paragraph.style.name or "").strip().lower() == "list paragraph":
+    style_name = paragraph.style.name if paragraph.style is not None else None
+    if (style_name or "").strip().lower() == "list paragraph":
         return True, 0
     return False, 0
 

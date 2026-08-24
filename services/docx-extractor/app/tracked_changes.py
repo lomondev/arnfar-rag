@@ -7,17 +7,22 @@ raw OOXML tree (python-docx elements are lxml). Also resolves move revisions.
 
 from __future__ import annotations
 
+from typing import Any
+
+# `element` / `root` are raw lxml elements from python-docx, which ships no stubs for
+# them; Any is the accurate annotation (see tables.py for the same call).
+
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 
 
-def accept_tracked_changes(element) -> dict:
+def accept_tracked_changes(element: Any) -> dict[str, int]:
     """Mutate `element` (a <w:document> lxml element) in place. Returns counts."""
     ins_count = _unwrap(element, f"{W}ins") + _unwrap(element, f"{W}moveTo")
     del_count = _remove(element, f"{W}del") + _remove(element, f"{W}moveFrom")
     return {"insertions_accepted": ins_count, "deletions_removed": del_count}
 
 
-def _unwrap(root, tag: str) -> int:
+def _unwrap(root: Any, tag: str) -> int:
     """Replace each matching element with its children (keep inserted content)."""
     count = 0
     # Materialize first: we mutate the tree while walking it.
@@ -35,7 +40,7 @@ def _unwrap(root, tag: str) -> int:
     return count
 
 
-def _remove(root, tag: str) -> int:
+def _remove(root: Any, tag: str) -> int:
     """Delete each matching element entirely (drop deleted content)."""
     count = 0
     # Materialize the list first: we mutate the tree while iterating.

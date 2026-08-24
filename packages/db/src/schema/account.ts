@@ -1,14 +1,5 @@
 import { sql } from "drizzle-orm";
-import {
-  boolean,
-  check,
-  index,
-  jsonb,
-  pgTable,
-  text,
-  unique,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { boolean, check, index, jsonb, pgTable, text, unique, uuid } from "drizzle-orm/pg-core";
 
 import { ragDocument } from "./document.ts";
 
@@ -35,10 +26,7 @@ export const laoAccount = pgTable(
   (t) => [
     unique("lao_account_tenant_code").on(t.hfId, t.companyId, t.code),
     index("lao_account_parent").on(t.hfId, t.companyId, t.parentCode),
-    check(
-      "lao_account_normal_balance_chk",
-      sql`${t.normalBalance} IN ('debit','credit')`,
-    ),
+    check("lao_account_normal_balance_chk", sql`${t.normalBalance} IN ('debit','credit')`),
     check("lao_account_statement_chk", sql`${t.statement} IN ('BS','PL','CF','NONE')`),
   ],
 );

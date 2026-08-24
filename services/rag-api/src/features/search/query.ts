@@ -1,5 +1,5 @@
 import type { TenantContext } from "@arnfar/db";
-import { sql, type SQL } from "drizzle-orm";
+import { type SQL, sql } from "drizzle-orm";
 
 import { db } from "../../lib/db.ts";
 
@@ -80,11 +80,17 @@ function rrfQuery(p: HybridSearchParams, cand: number) {
   // Collections are user-creatable now — an empty list means "no collection filter"
   // (tenant + review guards still apply), so entries in novel collections are reachable.
   const collPred = p.collections.length
-    ? sql`AND collection IN (${sql.join(p.collections.map((c) => sql`${c}`), sql`, `)})`
+    ? sql`AND collection IN (${sql.join(
+        p.collections.map((c) => sql`${c}`),
+        sql`, `,
+      )})`
     : sql``;
   // Kind scoping reads the chunk's own meta — no rag_document join inside the ANN CTEs.
   const kindPred = p.kinds.length
-    ? sql`AND meta ->> 'knowledge_kind' IN (${sql.join(p.kinds.map((x) => sql`${x}`), sql`, `)})`
+    ? sql`AND meta ->> 'knowledge_kind' IN (${sql.join(
+        p.kinds.map((x) => sql`${x}`),
+        sql`, `,
+      )})`
     : sql``;
   return sql`
     WITH dense AS (
@@ -140,9 +146,7 @@ export async function hybridSearch(p: HybridSearchParams): Promise<HybridSearchR
     const q = rrfQuery(p, cand);
     let explain: string | undefined;
     if (p.explain) {
-      const plan = await tx.execute(
-        sql`EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT) ${q}`,
-      );
+      const plan = await tx.execute(sql`EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT) ${q}`);
       explain = (plan as unknown as Array<Record<string, string>>)
         .map((r) => r["QUERY PLAN"])
         .join("\n");

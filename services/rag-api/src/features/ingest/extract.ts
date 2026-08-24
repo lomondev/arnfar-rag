@@ -1,4 +1,4 @@
-import { extractDocx, type ExtractResult } from "../../lib/sidecars.ts";
+import { type ExtractResult, extractDocx } from "../../lib/sidecars.ts";
 import { extractMarkdown, isMarkdownFile } from "./markdown.ts";
 
 /** Extension-dispatched extraction. `.md`/`.markdown` parse in-process;

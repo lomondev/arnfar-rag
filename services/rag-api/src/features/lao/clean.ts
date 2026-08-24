@@ -19,6 +19,10 @@
  * them can be a legitimate word boundary.
  */
 
+/* Each of these is a single BMP code unit, and stripping them individually is the whole
+ * point — ZWSP/ZWNJ/ZWJ/BOM are exactly the invisibles that corrupt Lao segmentation.
+ * The rule guards against splitting multi-code-point graphemes, which these are not. */
+// biome-ignore lint/suspicious/noMisleadingCharacterClass: single-code-unit invisibles, see above.
 const ZERO_WIDTH = /[\u200B\u200C\u200D\uFEFF]/g;
 const COMBINING = "ັິ-ູົຼ່-ໍ";
 const DOUBLED_MARK = new RegExp(`([${COMBINING}])\\1+`, "g");
@@ -42,6 +46,7 @@ function snippetsAround(text: string, re: RegExp, max: number): string[] {
   const out: string[] = [];
   const global = new RegExp(re.source, "g");
   let m: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: the assign-and-test loop is the standard incremental-scan idiom; splitting it duplicates the advance.
   while (out.length < max && (m = global.exec(text)) !== null) {
     const start = Math.max(0, m.index - 12);
     out.push(text.slice(start, Math.min(text.length, m.index + m[0].length + 12)));
@@ -72,8 +77,5 @@ export function scanLaoDefects(text: string): LaoDefects {
 
 /** Apply the three whitelisted fixes. Idempotent. */
 export function fixLaoDefects(text: string): string {
-  return text
-    .replace(ZERO_WIDTH, "")
-    .replace(DOUBLED_MARK, "$1")
-    .replace(SPACE_BEFORE_MARK, "$1");
+  return text.replace(ZERO_WIDTH, "").replace(DOUBLED_MARK, "$1").replace(SPACE_BEFORE_MARK, "$1");
 }

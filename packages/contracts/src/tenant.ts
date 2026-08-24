@@ -12,13 +12,7 @@ export const tenantContext = z.object({
 export type TenantContext = z.infer<typeof tenantContext>;
 
 /** Corpus collections (see rag_document.collection). */
-export const collection = z.enum([
-  "lao-accounting-law",
-  "coa",
-  "tax",
-  "sop",
-  "lao-style",
-]);
+export const collection = z.enum(["lao-accounting-law", "coa", "tax", "sop", "lao-style"]);
 export type Collection = z.infer<typeof collection>;
 
 /** Language tag used across documents, chunks, and detection. */

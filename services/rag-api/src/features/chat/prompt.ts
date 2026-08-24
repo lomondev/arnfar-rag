@@ -77,7 +77,7 @@ export function buildSystemPrompt(
     "You are an expert Lao accountant answering for accounting staff in Laos.",
     "Language rules:",
     "- Answer in the user's language. A Lao question gets a Lao answer in formal written register (ພາສາຂຽນທາງການ). Never translate the source content.",
-    "- Write pure Lao script only. Never mix in Thai characters or Thai spellings — Lao and Thai are different languages. Copy Lao words from the sources letter-for-letter; never respell or \"correct\" them.",
+    '- Write pure Lao script only. Never mix in Thai characters or Thai spellings — Lao and Thai are different languages. Copy Lao words from the sources letter-for-letter; never respell or "correct" them.',
     "- Lao digits ໐໑໒໓໔໕໖໗໘໙ = 0123456789. Lao scale words: ຮ້ອຍ = 100, ພັນ = 1,000, ໝື່ນ = 10,000, ແສນ = 100,000, ລ້ານ = 1,000,000, ຕື້ = 1,000,000,000. Read and write amounts with these exact values — confusing ໝື່ນ with ແສນ is a serious accounting error. Currency is Lao kip (ກີບ, LAK) unless a source states otherwise.",
     "Answer rules:",
     "- Cite or abstain: every factual claim must carry a [n] citation to a numbered context source below. If the context does not support an answer, say so plainly in Lao — never invent tax rates, amounts, or account codes.",
@@ -135,7 +135,12 @@ export function buildContext(sources: CitationSource[]): string {
       const head = s.headingPath.length ? s.headingPath.join(" › ") : s.title;
       const auth = s.authority ? `, authority: ${s.authority}` : "";
       const eff = s.effectiveDate ? `, effective: ${s.effectiveDate}` : "";
-      const web = s.origin === "web" ? ` (web: ${s.url})` : s.origin === "erp" ? " (erp: live system data)" : "";
+      const web =
+        s.origin === "web"
+          ? ` (web: ${s.url})`
+          : s.origin === "erp"
+            ? " (erp: live system data)"
+            : "";
       // Rendered inline so the warning cannot be separated from the text it qualifies.
       const sup = s.superseded
         ? `, ⚠ SUPERSEDED by "${s.superseded.title}"${s.superseded.effectiveDate ? ` effective ${s.superseded.effectiveDate}` : ""}`
@@ -157,14 +162,16 @@ export interface HistoryTurn {
  *  set's [n] are live citations, so we never let old markers confuse the model). */
 export function buildHistory(turns: HistoryTurn[]): string {
   if (!turns.length) return "";
-  return turns
-    .map((t) => `${t.role === "user" ? "User" : "Assistant"}: ${t.content}`)
-    .join("\n\n");
+  return turns.map((t) => `${t.role === "user" ? "User" : "Assistant"}: ${t.content}`).join("\n\n");
 }
 
 /** Build the full prompt: optional conversation history → retrieved context → question.
  *  When there is no history this collapses to the original single-turn prompt. */
-export function buildPrompt(question: string, sources: CitationSource[], history: HistoryTurn[]): string {
+export function buildPrompt(
+  question: string,
+  sources: CitationSource[],
+  history: HistoryTurn[],
+): string {
   const context = buildContext(sources);
   const hist = buildHistory(history);
   const parts: string[] = [];

@@ -61,10 +61,7 @@ export async function mineCandidates(
         .select({ termLo: schema.laoTerm.termLo })
         .from(schema.laoTerm)
         .where(
-          and(
-            eq(schema.laoTerm.hfId, tenant.hfId),
-            eq(schema.laoTerm.companyId, tenant.companyId),
-          ),
+          and(eq(schema.laoTerm.hfId, tenant.hfId), eq(schema.laoTerm.companyId, tenant.companyId)),
         )
     ).map((r) => r.termLo),
   );

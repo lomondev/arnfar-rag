@@ -44,7 +44,12 @@ export interface ErpToolCall {
 export async function customerOutstanding(nameFragment?: string) {
   await ready();
   const needle = `%${nameFragment ?? ""}%`;
-  return plain<{ name_lo: string; invoiced_lak: string; paid_lak: string; outstanding_lak: string }>(
+  return plain<{
+    name_lo: string;
+    invoiced_lak: string;
+    paid_lak: string;
+    outstanding_lak: string;
+  }>(
     await erpDb().execute(sql`
       SELECT customer_lo AS name_lo,
              sum(gross_lak)::text                    AS invoiced_lak,
@@ -61,40 +66,51 @@ export async function customerOutstanding(nameFragment?: string) {
 export async function invoiceLookup(q: string) {
   await ready();
   const needle = `%${q}%`;
-  return plain<Record<string, string>>(await erpDb().execute(sql`
+  return plain<Record<string, string>>(
+    await erpDb().execute(sql`
     SELECT ref, customer_lo, issue_date::text,
            net_lak::text, vat_lak::text, gross_lak::text, status, paid_lak::text
     FROM arnfar_ai_invoice
     WHERE ref ILIKE ${needle} OR customer_lo ILIKE ${needle}
     ORDER BY issue_date DESC
     LIMIT 10
-  `));
+  `),
+  );
 }
 
 export async function accountBalance(codePrefix: string) {
   await ready();
-  return plain<{ account_code: string; debit_lak: string; credit_lak: string; balance_lak: string }>(await erpDb().execute(sql`
+  return plain<{
+    account_code: string;
+    debit_lak: string;
+    credit_lak: string;
+    balance_lak: string;
+  }>(
+    await erpDb().execute(sql`
     SELECT account_code,
            sum(debit_lak)::text  AS debit_lak,
            sum(credit_lak)::text AS credit_lak,
            (sum(debit_lak) - sum(credit_lak))::text AS balance_lak
     FROM arnfar_ai_gl_entry
-    WHERE account_code LIKE ${codePrefix + "%"}
+    WHERE account_code LIKE ${`${codePrefix}%`}
     GROUP BY account_code
     ORDER BY account_code
-  `));
+  `),
+  );
 }
 
 export async function trialBalance() {
   await ready();
-  return plain<{ account_code: string; debit_lak: string; credit_lak: string }>(await erpDb().execute(sql`
+  return plain<{ account_code: string; debit_lak: string; credit_lak: string }>(
+    await erpDb().execute(sql`
     SELECT account_code,
            sum(debit_lak)::text  AS debit_lak,
            sum(credit_lak)::text AS credit_lak
     FROM arnfar_ai_gl_entry
     GROUP BY account_code
     ORDER BY account_code
-  `));
+  `),
+  );
 }
 
 /* ── intent detection (conservative — fire only on clear ERP questions) ──── */

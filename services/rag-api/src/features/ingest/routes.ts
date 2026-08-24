@@ -4,16 +4,16 @@ import { Elysia, t } from "elysia";
 
 import { db } from "../../lib/db.ts";
 import { devTenant } from "../../lib/tenant.ts";
-import { ingestDocx } from "./pipeline.ts";
-import { previewDocx } from "./preview.ts";
 import {
   citedQaCount,
   deleteDocument,
   retroClean,
-  supersedeDocument,
   SupersedeError,
+  supersedeDocument,
   supersedesCount,
 } from "./clean-corpus.ts";
+import { ingestDocx } from "./pipeline.ts";
+import { previewDocx } from "./preview.ts";
 
 async function jobStatus(id: string, hfId: string, companyId: string) {
   const [job] = await db()
@@ -70,11 +70,9 @@ export const ingestRoutes = new Elysia({ prefix: "/ingest" })
   )
   // Scan (dryRun) or fix the existing corpus's Lao defects. Fixes touch content_norm +
   // content_seg only, null affected embeddings, and enqueue re-embed jobs.
-  .post(
-    "/retro-clean",
-    async ({ body }) => retroClean(devTenant(), body.dryRun ?? true),
-    { body: t.Object({ dryRun: t.Optional(t.Boolean()) }) },
-  )
+  .post("/retro-clean", async ({ body }) => retroClean(devTenant(), body.dryRun ?? true), {
+    body: t.Object({ dryRun: t.Optional(t.Boolean()) }),
+  })
   // Mark a document as replaced by a newer one — or pass null to clear it. The old
   // document stays retrievable; every citation from it now names its replacement.
   .patch(
@@ -226,10 +224,7 @@ export const ingestRoutes = new Elysia({ prefix: "/ingest" })
       })
       .from(schema.ragChunk)
       .where(
-        and(
-          eq(schema.ragChunk.hfId, tenant.hfId),
-          eq(schema.ragChunk.companyId, tenant.companyId),
-        ),
+        and(eq(schema.ragChunk.hfId, tenant.hfId), eq(schema.ragChunk.companyId, tenant.companyId)),
       )
       .groupBy(schema.ragChunk.documentId);
     const byDoc = new Map(counts.map((c) => [c.documentId, c]));

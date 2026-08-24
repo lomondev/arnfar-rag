@@ -69,7 +69,10 @@ export function titleFrom(question: string): string {
 }
 
 function tenantCond(t: TenantContext) {
-  return and(eq(schema.ragConversation.hfId, t.hfId), eq(schema.ragConversation.companyId, t.companyId));
+  return and(
+    eq(schema.ragConversation.hfId, t.hfId),
+    eq(schema.ragConversation.companyId, t.companyId),
+  );
 }
 
 export async function createConversation(
@@ -78,18 +81,22 @@ export async function createConversation(
 ): Promise<ConversationRow> {
   const id = newId();
   const now = new Date();
-  await db().insert(schema.ragConversation).values({
-    id,
-    hfId: tenant.hfId,
-    companyId: tenant.companyId,
-    branchId: tenant.branchId ?? null,
+  await db()
+    .insert(schema.ragConversation)
+    .values({
+      id,
+      hfId: tenant.hfId,
+      companyId: tenant.companyId,
+      branchId: tenant.branchId ?? null,
+      title: input.title ?? "New chat",
+      lang: input.lang ?? "mixed",
+      collection: input.collection ?? null,
+      createdAt: now,
+      updatedAt: now,
+    });
+  await auditEvent(tenant, "conversation", id, "conversation.created", {
     title: input.title ?? "New chat",
-    lang: input.lang ?? "mixed",
-    collection: input.collection ?? null,
-    createdAt: now,
-    updatedAt: now,
   });
-  await auditEvent(tenant, "conversation", id, "conversation.created", { title: input.title ?? "New chat" });
   return {
     id,
     title: input.title ?? "New chat",
@@ -121,7 +128,10 @@ export async function listConversations(tenant: TenantContext): Promise<Conversa
   }));
 }
 
-export async function getConversation(tenant: TenantContext, id: string): Promise<ConversationDetail | null> {
+export async function getConversation(
+  tenant: TenantContext,
+  id: string,
+): Promise<ConversationDetail | null> {
   const [conv] = await db()
     .select({
       id: schema.ragConversation.id,
@@ -220,17 +230,19 @@ export async function insertMessage(
 ): Promise<MessageRow> {
   const id = newId();
   const now = new Date();
-  await db().insert(schema.ragMessage).values({
-    id,
-    conversationId: input.conversationId,
-    hfId: tenant.hfId,
-    companyId: tenant.companyId,
-    role: input.role,
-    content: input.content,
-    sources: input.sources ?? null,
-    meta: input.meta ?? {},
-    createdAt: now,
-  });
+  await db()
+    .insert(schema.ragMessage)
+    .values({
+      id,
+      conversationId: input.conversationId,
+      hfId: tenant.hfId,
+      companyId: tenant.companyId,
+      role: input.role,
+      content: input.content,
+      sources: input.sources ?? null,
+      meta: input.meta ?? {},
+      createdAt: now,
+    });
   // Bump the conversation's updatedAt so the sidebar reorders.
   await db()
     .update(schema.ragConversation)
@@ -282,14 +294,12 @@ export async function recentMessages(
     .orderBy(desc(schema.ragMessage.createdAt))
     .limit(limit);
 
-  return recent
-    .reverse()
-    .map((m) => ({
-      ...m,
-      role: m.role as "user" | "assistant",
-      meta: m.meta as Record<string, unknown>,
-      createdAt: m.createdAt.toISOString(),
-    }));
+  return recent.reverse().map((m) => ({
+    ...m,
+    role: m.role as "user" | "assistant",
+    meta: m.meta as Record<string, unknown>,
+    createdAt: m.createdAt.toISOString(),
+  }));
 }
 
 /** Trim a prior assistant turn so old answers don't consume the context budget.

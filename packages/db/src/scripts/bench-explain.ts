@@ -2,8 +2,7 @@
  *  Runs against the synthetic bench tenant (seed-bench.ts). */
 import postgres from "postgres";
 
-const url =
-  process.env.DATABASE_URL ?? "postgres://arnfar:change-me-locally@localhost:5433/arnfar";
+const url = process.env.DATABASE_URL ?? "postgres://arnfar:change-me-locally@localhost:5433/arnfar";
 const sql = postgres(url, { max: 1 });
 
 const HF = "018f0000-0000-7000-8000-0000000000bb";
@@ -62,7 +61,9 @@ try {
   times.sort((a, b) => a - b);
   const pct = (p: number) => times[Math.floor((p / 100) * times.length)]!.toFixed(1);
   const nRows = await sql<{ n: number }[]>`SELECT count(*)::int n FROM rag_chunk`;
-  console.log(`\n=== latency over ${N} dense searches (total rag_chunk rows: ${nRows[0]?.n ?? 0}) ===`);
+  console.log(
+    `\n=== latency over ${N} dense searches (total rag_chunk rows: ${nRows[0]?.n ?? 0}) ===`,
+  );
   console.log(`p50 ${pct(50)}ms · p95 ${pct(95)}ms · p99 ${pct(99)}ms`);
 } finally {
   await sql.end();

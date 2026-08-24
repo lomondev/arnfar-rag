@@ -6,7 +6,7 @@ is typed and carries the running heading_path so citations stay legible downstre
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -59,7 +59,7 @@ class AccountRowBlock(BaseModel):
 
 
 Block = Annotated[
-    Union[HeadingBlock, ProseBlock, ListBlock, TableBlock, AccountRowBlock],
+    HeadingBlock | ProseBlock | ListBlock | TableBlock | AccountRowBlock,
     Field(discriminator="type"),
 ]
 

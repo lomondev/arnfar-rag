@@ -9,10 +9,21 @@ letters). Only Lao-script tokens are checked.
 from __future__ import annotations
 
 import re
+from typing import TypedDict
 
 from . import lao
 
 _HAS_LAO = re.compile(r"[຀-໿]")
+
+
+class TokenCheck(TypedDict):
+    """One token's spellcheck verdict. Named so callers can read `r["is_lao"]` as a
+    bool rather than Any — check_text() counts on exactly that."""
+
+    token: str
+    is_lao: bool
+    in_dictionary: bool
+    suggestions: list[str]
 
 
 def _edits1(word: str, letters: str) -> set[str]:
@@ -33,7 +44,7 @@ def suggestions_for(word: str, limit: int = 5) -> list[str]:
     return sorted(cands)[:limit]
 
 
-def check_token(token: str) -> dict:
+def check_token(token: str) -> TokenCheck:
     is_lao = bool(_HAS_LAO.search(token))
     if not is_lao:
         return {"token": token, "is_lao": False, "in_dictionary": True, "suggestions": []}
@@ -46,7 +57,7 @@ def check_token(token: str) -> dict:
     }
 
 
-def check_text(text: str) -> tuple[list[dict], int]:
+def check_text(text: str) -> tuple[list[TokenCheck], int]:
     results = [check_token(t) for t in lao.word_tokens(text)]
     unknown = sum(1 for r in results if r["is_lao"] and not r["in_dictionary"])
     return results, unknown

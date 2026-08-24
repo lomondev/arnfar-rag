@@ -36,7 +36,9 @@ async function searxngSearch(base: string, query: string, k: number): Promise<Ra
   const u = `${base.replace(/\/$/, "")}/search?q=${encodeURIComponent(query)}&format=json`;
   const res = await fetch(u, { headers: { "user-agent": UA }, signal: AbortSignal.timeout(8000) });
   if (!res.ok) throw new Error(`searxng ${res.status}`);
-  const data = (await res.json()) as { results?: { title?: string; url?: string; content?: string }[] };
+  const data = (await res.json()) as {
+    results?: { title?: string; url?: string; content?: string }[];
+  };
   return (data.results ?? [])
     .filter((r) => r.url)
     .slice(0, k)
@@ -71,12 +73,18 @@ async function ddgSearch(query: string, k: number): Promise<RawHit[]> {
   const snippetRe = /class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
   const snippets: string[] = [];
   let sm: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: the assign-and-test loop is the standard incremental-scan idiom; splitting it duplicates the advance.
   while ((sm = snippetRe.exec(html)) !== null) snippets.push(strip(sm[1] ?? ""));
   let m: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: the assign-and-test loop is the standard incremental-scan idiom; splitting it duplicates the advance.
   while (hits.length < k && (m = linkRe.exec(html)) !== null) {
     const raw = m[1] ?? "";
     const uddg = /[?&]uddg=([^&]+)/.exec(raw);
-    const url = uddg ? decodeURIComponent(uddg[1] ?? "") : raw.startsWith("//") ? `https:${raw}` : raw;
+    const url = uddg
+      ? decodeURIComponent(uddg[1] ?? "")
+      : raw.startsWith("//")
+        ? `https:${raw}`
+        : raw;
     if (!/^https?:\/\//.test(url)) continue;
     hits.push({ title: strip(m[2] ?? "") || url, url, snippet: snippets[hits.length] ?? "" });
   }
@@ -120,7 +128,5 @@ export async function webSearch(query: string, k = 3): Promise<WebResult[]> {
   } catch {
     return [];
   }
-  return Promise.all(
-    hits.map(async (h) => ({ ...h, content: await fetchPageText(h.url) })),
-  );
+  return Promise.all(hits.map(async (h) => ({ ...h, content: await fetchPageText(h.url) })));
 }

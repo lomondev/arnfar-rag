@@ -7,8 +7,7 @@
  */
 import postgres from "postgres";
 
-const url =
-  process.env.DATABASE_URL ?? "postgres://arnfar:change-me-locally@localhost:5433/arnfar";
+const url = process.env.DATABASE_URL ?? "postgres://arnfar:change-me-locally@localhost:5433/arnfar";
 const sql = postgres(url, { max: 1 });
 
 const BENCH_HF = "018f0000-0000-7000-8000-0000000000bb";

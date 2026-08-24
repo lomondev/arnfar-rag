@@ -1,14 +1,26 @@
 [
-  { "file": "vat.md",                   "collection": "tax",                 "title": "ອາກອນມູນຄ່າເພີ່ມ (VAT)" },
-  { "file": "profit-tax.md",            "collection": "tax",                 "title": "ອາກອນກຳໄລ ຂອງ ວິສາຫະກິດ" },
-  { "file": "payroll-income-tax.md",    "collection": "tax",                 "title": "ອາກອນລາຍໄດ້ ຈາກ ເງິນເດືອນ" },
-  { "file": "social-security.md",       "collection": "tax",                 "title": "ເງິນສົມທົບ ປະກັນສັງຄົມ" },
-  { "file": "depreciation.md",          "collection": "lao-accounting-law",  "title": "ຄ່າຫຼູ້ຍຫ້ຽນ ຂອງ ຊັບສິນຄົງທີ່" },
-  { "file": "financial-statements.md",  "collection": "lao-accounting-law",  "title": "ບົດລາຍງານ ການເງິນ ປະຈຳ ປີ" },
-  { "file": "inventory-costing.md",     "collection": "lao-accounting-law",  "title": "ການ ຕີ ລາຄາ ສິນຄ້າ ຄົງ ຄັງ" },
-  { "file": "journal-entries.md",       "collection": "sop",                 "title": "ຕົວຢ່າງ ການ ບັນທຶກ ບັນຊີ ປະຈຳ ວັນ" },
-  { "file": "invoice-and-documents.md", "collection": "sop",                 "title": "ໃບເກັບເງິນ ແລະ ເອກະສານ ປະກອບ ບັນຊີ" },
-  { "file": "period-close.md",          "collection": "sop",                 "title": "ຂັ້ນຕອນ ປິດ ບັນຊີ ທ້າຍ ງວດ" },
-  { "file": "bank-reconciliation.md",   "collection": "sop",                 "title": "ການ ກະທົບ ຍອດ ທະນາຄານ" },
-  { "file": "currency-and-fx.md",       "collection": "sop",                 "title": "ເງິນ ກີບ ແລະ ລາຍການ ສະກຸນ ຕ່າງປະເທດ" }
+  { "file": "vat.md", "collection": "tax", "title": "ອາກອນມູນຄ່າເພີ່ມ (VAT)" },
+  { "file": "profit-tax.md", "collection": "tax", "title": "ອາກອນກຳໄລ ຂອງ ວິສາຫະກິດ" },
+  { "file": "payroll-income-tax.md", "collection": "tax", "title": "ອາກອນລາຍໄດ້ ຈາກ ເງິນເດືອນ" },
+  { "file": "social-security.md", "collection": "tax", "title": "ເງິນສົມທົບ ປະກັນສັງຄົມ" },
+  { "file": "depreciation.md", "collection": "lao-accounting-law", "title": "ຄ່າຫຼູ້ຍຫ້ຽນ ຂອງ ຊັບສິນຄົງທີ່" },
+  {
+    "file": "financial-statements.md",
+    "collection": "lao-accounting-law",
+    "title": "ບົດລາຍງານ ການເງິນ ປະຈຳ ປີ"
+  },
+  {
+    "file": "inventory-costing.md",
+    "collection": "lao-accounting-law",
+    "title": "ການ ຕີ ລາຄາ ສິນຄ້າ ຄົງ ຄັງ"
+  },
+  { "file": "journal-entries.md", "collection": "sop", "title": "ຕົວຢ່າງ ການ ບັນທຶກ ບັນຊີ ປະຈຳ ວັນ" },
+  {
+    "file": "invoice-and-documents.md",
+    "collection": "sop",
+    "title": "ໃບເກັບເງິນ ແລະ ເອກະສານ ປະກອບ ບັນຊີ"
+  },
+  { "file": "period-close.md", "collection": "sop", "title": "ຂັ້ນຕອນ ປິດ ບັນຊີ ທ້າຍ ງວດ" },
+  { "file": "bank-reconciliation.md", "collection": "sop", "title": "ການ ກະທົບ ຍອດ ທະນາຄານ" },
+  { "file": "currency-and-fx.md", "collection": "sop", "title": "ເງິນ ກີບ ແລະ ລາຍການ ສະກຸນ ຕ່າງປະເທດ" }
 ]

@@ -49,3 +49,6 @@ services/*/storage/
 # dev.sh process logs + pids
 .logs/
 .run/
+
+# python tooling venv (scripts/py.sh)
+.venv-tools/

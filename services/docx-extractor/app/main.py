@@ -22,7 +22,7 @@ app = FastAPI(title="arnfar-docx-extractor", version="1.0.0")
 
 
 @app.get("/health")
-def health() -> dict:
+def health() -> dict[str, object]:
     return {
         "status": "ok",
         "service": "arnfar-docx-extractor",
@@ -55,12 +55,12 @@ async def extract(file: UploadFile = File(...)) -> ExtractResponse:
             try:
                 src = doc_convert.convert_doc_to_docx(src, tmp_path / "converted")
                 warnings.append("converted legacy .doc → .docx via LibreOffice")
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 raise HTTPException(status_code=422, detail=f"conversion failed: {exc}") from exc
 
         try:
             document = docx.Document(str(src))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise HTTPException(status_code=422, detail=f"could not open document: {exc}") from exc
 
         # Accept tracked changes on the raw tree before extraction.
@@ -81,7 +81,7 @@ async def extract(file: UploadFile = File(...)) -> ExtractResponse:
 
     stats = ExtractStats(
         n_blocks=len(blocks),
-        by_type=dict(by_type),
+        by_type={str(k): v for k, v in by_type.items()},
         n_amounts=n_amounts,
         n_account_rows=by_type.get("account_row", 0),
         heading_paths=heading_paths,

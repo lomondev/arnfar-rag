@@ -1,13 +1,5 @@
 import { sql } from "drizzle-orm";
-import {
-  boolean,
-  index,
-  pgTable,
-  text,
-  timestamp,
-  unique,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { boolean, index, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 
 import { ragChunk } from "./chunk.ts";
 

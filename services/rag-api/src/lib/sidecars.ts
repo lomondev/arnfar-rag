@@ -82,10 +82,7 @@ export interface ExtractResult {
   warnings: string[];
 }
 
-export async function extractDocx(
-  bytes: Uint8Array,
-  filename: string,
-): Promise<ExtractResult> {
+export async function extractDocx(bytes: Uint8Array, filename: string): Promise<ExtractResult> {
   const form = new FormData();
   form.append("file", new Blob([bytes]), filename);
   const res = await fetch(`${env.docxExtractorUrl}/extract`, {

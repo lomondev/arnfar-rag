@@ -108,9 +108,7 @@ async function rewriteSuggestion(
   } catch {
     styleContext = "";
   }
-  const glossary = terms.length
-    ? terms.map((t) => `${t.termLo} = ${t.termEn}`).join("; ")
-    : "";
+  const glossary = terms.length ? terms.map((t) => `${t.termLo} = ${t.termEn}`).join("; ") : "";
 
   // The checkers' findings become explicit edit instructions — the model applies
   // them; it does not get to decide what else to "improve".
@@ -120,7 +118,9 @@ async function rewriteSuggestion(
   }
   for (const s of spelling) {
     if (s.suggestions.length) {
-      fixes.push(`"${s.token}" looks misspelled — likely ${s.suggestions.slice(0, 3).join(" or ")}.`);
+      fixes.push(
+        `"${s.token}" looks misspelled — likely ${s.suggestions.slice(0, 3).join(" or ")}.`,
+      );
     }
   }
 

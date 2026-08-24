@@ -39,12 +39,7 @@ export const ragDocument = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    unique("rag_document_tenant_sha").on(
-      t.hfId,
-      t.companyId,
-      t.collection,
-      t.contentSha256,
-    ),
+    unique("rag_document_tenant_sha").on(t.hfId, t.companyId, t.collection, t.contentSha256),
     check("rag_document_lang_chk", sql`${t.lang} IN ('lo','en','th','mixed')`),
     // Self-reference: a document may be superseded by another.
     foreignKey({

@@ -9,11 +9,16 @@ spanned positions are emitted as '' so a chart of accounts gets no phantom rows.
 
 from __future__ import annotations
 
+from typing import Any
+
 from docx.oxml.ns import qn
 from docx.table import Table
 
+# `tc` is a raw lxml CT_Tc element from python-docx. lxml publishes no type stubs, so
+# Any is the accurate annotation here rather than a Protocol invented to look typed.
 
-def _grid_span(tc) -> int:
+
+def _grid_span(tc: Any) -> int:
     tcPr = tc.find(qn("w:tcPr"))
     if tcPr is None:
         return 1
@@ -26,7 +31,7 @@ def _grid_span(tc) -> int:
         return 1
 
 
-def _vmerge(tc) -> str | None:
+def _vmerge(tc: Any) -> str | None:
     """Return 'restart', 'continue', or None for a cell's vertical-merge state."""
     tcPr = tc.find(qn("w:tcPr"))
     if tcPr is None:
@@ -37,7 +42,7 @@ def _vmerge(tc) -> str | None:
     return "restart" if vm.get(qn("w:val")) == "restart" else "continue"
 
 
-def _tc_text(tc) -> str:
+def _tc_text(tc: Any) -> str:
     return _clean("".join(t.text or "" for t in tc.iter(qn("w:t"))))
 
 

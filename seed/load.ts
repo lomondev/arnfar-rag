@@ -127,7 +127,12 @@ function parseCsv(text: string): Record<string, string>[] {
 }
 
 const arr = (s: string | undefined): string[] =>
-  s ? s.split("|").map((x) => x.trim()).filter(Boolean) : [];
+  s
+    ? s
+        .split("|")
+        .map((x) => x.trim())
+        .filter(Boolean)
+    : [];
 
 // ── 1. knowledge documents ────────────────────────────────────────────────────
 interface KnowledgeEntry {
@@ -420,4 +425,4 @@ if (!has("--verify")) {
   console.log("Everything is unverified. Review in /studio/review, /studio/accounts,");
   console.log("/studio/glossary and /studio/qa — or re-run with --verify to auto-accept.");
 }
-console.log("Seed documents carry authority \"" + SEED_AUTHORITY + "\" — they are NOT real sources.");
+console.log(`Seed documents carry authority "${SEED_AUTHORITY}" — they are NOT real sources.`);

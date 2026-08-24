@@ -7,7 +7,8 @@ degraded capability from /health — the service must never crash on import.
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
+from typing import TypedDict
 
 # ── capability flags, resolved once at import ────────────────────────────────
 _word_tokenize: Callable[[str], list[str]] | None = None
@@ -29,7 +30,7 @@ def _load() -> None:
     global _word_tokenize, _sent_tokenize, _dictionary, _spelldict, _lao_letters
 
     try:
-        from laonlp.tokenize import word_tokenize, sent_tokenize
+        from laonlp.tokenize import sent_tokenize, word_tokenize
 
         _word_tokenize = word_tokenize
         _sent_tokenize = sent_tokenize
@@ -38,7 +39,7 @@ def _load() -> None:
         _sent_tokenize = None
 
     try:
-        from laonlp.corpus import lao_words, lao_spellcheckdict
+        from laonlp.corpus import lao_spellcheckdict, lao_words
 
         _dictionary = {w for w in lao_words() if w}
         _spelldict = {w for w in lao_spellcheckdict() if w}
@@ -47,7 +48,7 @@ def _load() -> None:
         _spelldict = set()
 
     try:
-        from laonlp import CONSONANTS, VOWELS, TONE_MARKS
+        from laonlp import CONSONANTS, TONE_MARKS, VOWELS
 
         letters = f"{CONSONANTS}{VOWELS}{TONE_MARKS}"
         # De-duplicate while keeping only Lao-block characters.
@@ -59,7 +60,17 @@ def _load() -> None:
 _load()
 
 
-def capabilities() -> dict:
+class Capabilities(TypedDict):
+    """What actually loaded. HealthResponse consumes these field-by-field, so a loose
+    dict[str, bool | int] would push a union into two bool-typed fields."""
+
+    word_tokenize: bool
+    sent_tokenize: bool
+    dictionary_size: int
+    spelldict_size: int
+
+
+def capabilities() -> Capabilities:
     return {
         "word_tokenize": _word_tokenize is not None,
         "sent_tokenize": _sent_tokenize is not None,

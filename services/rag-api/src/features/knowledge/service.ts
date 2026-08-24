@@ -1,5 +1,5 @@
-import { schema } from "@arnfar/db";
 import type { TenantContext } from "@arnfar/db";
+import { schema } from "@arnfar/db";
 import { and, desc, eq, sql } from "drizzle-orm";
 
 import { db } from "../../lib/db.ts";
@@ -124,7 +124,9 @@ export async function deleteAllEntries(
   tenant: TenantContext,
   kindKey: string,
   force: boolean,
-): Promise<{ deleted: number; deletedChunks: number; citedQa: number } | { blocked: true; citedQa: number }> {
+): Promise<
+  { deleted: number; deletedChunks: number; citedQa: number } | { blocked: true; citedQa: number }
+> {
   const docs = await db()
     .select({ id: schema.ragDocument.id })
     .from(schema.ragDocument)
@@ -151,14 +153,16 @@ export async function deleteAllEntries(
   }
 
   if (deleted > 0) {
-    await db().insert(schema.outboxEvent).values({
-      id: newId(),
-      hfId: tenant.hfId,
-      aggregateType: "knowledge_kind",
-      aggregateId: docs[0]!.id,
-      eventType: "knowledge.bulk_deleted",
-      payload: { kind: kindKey, deleted, deletedChunks, citedQa },
-    });
+    await db()
+      .insert(schema.outboxEvent)
+      .values({
+        id: newId(),
+        hfId: tenant.hfId,
+        aggregateType: "knowledge_kind",
+        aggregateId: docs[0]!.id,
+        eventType: "knowledge.bulk_deleted",
+        payload: { kind: kindKey, deleted, deletedChunks, citedQa },
+      });
   }
   return { deleted, deletedChunks, citedQa };
 }
@@ -188,7 +192,12 @@ function parseMarkdownBlocks(
   title: string,
   body: string,
 ): { kind: "heading" | "prose" | "table"; level?: number; text: string; headingPath: string[] }[] {
-  const out: { kind: "heading" | "prose" | "table"; level?: number; text: string; headingPath: string[] }[] = [];
+  const out: {
+    kind: "heading" | "prose" | "table";
+    level?: number;
+    text: string;
+    headingPath: string[];
+  }[] = [];
   const stack: string[] = []; // heading texts by level (index 0 = level 1)
   const lines = body.split("\n");
   let i = 0;
@@ -302,15 +311,17 @@ async function buildChunkRows(
 
 async function enqueueEmbed(tenant: TenantContext, documentId: string) {
   const jobId = newId();
-  await db().insert(schema.ingestJob).values({
-    id: jobId,
-    hfId: tenant.hfId,
-    companyId: tenant.companyId,
-    documentId,
-    kind: "embed",
-    status: "queued",
-    payload: { reason: "knowledge-entry" },
-  });
+  await db()
+    .insert(schema.ingestJob)
+    .values({
+      id: jobId,
+      hfId: tenant.hfId,
+      companyId: tenant.companyId,
+      documentId,
+      kind: "embed",
+      status: "queued",
+      payload: { reason: "knowledge-entry" },
+    });
   return jobId;
 }
 
@@ -344,10 +355,7 @@ export async function listEntries(tenant: TenantContext, kindKey: string) {
     })
     .from(schema.ragChunk)
     .where(
-      and(
-        eq(schema.ragChunk.hfId, tenant.hfId),
-        eq(schema.ragChunk.companyId, tenant.companyId),
-      ),
+      and(eq(schema.ragChunk.hfId, tenant.hfId), eq(schema.ragChunk.companyId, tenant.companyId)),
     )
     .groupBy(schema.ragChunk.documentId);
   const byDoc = new Map(counts.map((c) => [c.documentId, c]));
@@ -378,38 +386,49 @@ export async function createEntry(
   if (!kind) throw new Error(`unknown knowledge kind '${input.kindKey}'`);
 
   const documentId = newId();
-  await db().insert(schema.ragDocument).values({
-    id: documentId,
-    hfId: tenant.hfId,
-    companyId: tenant.companyId,
-    branchId: null,
-    collection: kind.collection,
-    title: input.title,
-    sourceFilename: "manual",
-    sourceUri: `manual://${kind.key}/${documentId}`,
-    lang: "lo",
-    status: "chunked",
-    contentSha256: sha256(new TextEncoder().encode(`${kind.key}\n${input.title}\n${input.body}`)),
-    authority: input.authority ?? null,
-    license: "internal",
-    // meta.body is the CANONICAL authored markdown. Chunk contents cannot reconstruct
-    // it: headings become chunk boundaries (heading_path), not chunk text — so an
-    // edit round-tripped through chunks would silently lose every `## heading`.
-    meta: { knowledge_kind: kind.key, manual: true, body: input.body },
-  });
+  await db()
+    .insert(schema.ragDocument)
+    .values({
+      id: documentId,
+      hfId: tenant.hfId,
+      companyId: tenant.companyId,
+      branchId: null,
+      collection: kind.collection,
+      title: input.title,
+      sourceFilename: "manual",
+      sourceUri: `manual://${kind.key}/${documentId}`,
+      lang: "lo",
+      status: "chunked",
+      contentSha256: sha256(new TextEncoder().encode(`${kind.key}\n${input.title}\n${input.body}`)),
+      authority: input.authority ?? null,
+      license: "internal",
+      // meta.body is the CANONICAL authored markdown. Chunk contents cannot reconstruct
+      // it: headings become chunk boundaries (heading_path), not chunk text — so an
+      // edit round-tripped through chunks would silently lose every `## heading`.
+      meta: { knowledge_kind: kind.key, manual: true, body: input.body },
+    });
 
-  const rows = await buildChunkRows(tenant, documentId, kind.collection, input.title, input.body, kind.key);
+  const rows = await buildChunkRows(
+    tenant,
+    documentId,
+    kind.collection,
+    input.title,
+    input.body,
+    kind.key,
+  );
   await db().insert(schema.ragChunk).values(rows);
   const jobId = await enqueueEmbed(tenant, documentId);
 
-  await db().insert(schema.outboxEvent).values({
-    id: newId(),
-    hfId: tenant.hfId,
-    aggregateType: "rag_document",
-    aggregateId: documentId,
-    eventType: "knowledge.created",
-    payload: { kind: kind.key, title: input.title, chunks: rows.length },
-  });
+  await db()
+    .insert(schema.outboxEvent)
+    .values({
+      id: newId(),
+      hfId: tenant.hfId,
+      aggregateType: "rag_document",
+      aggregateId: documentId,
+      eventType: "knowledge.created",
+      payload: { kind: kind.key, title: input.title, chunks: rows.length },
+    });
 
   return { id: documentId, chunks: rows.length, jobId };
 }
@@ -441,7 +460,14 @@ export async function updateEntry(
 
   await db().delete(schema.ragChunk).where(eq(schema.ragChunk.documentId, documentId));
   const kindKey = String((doc.meta as Record<string, unknown>).knowledge_kind ?? "");
-  const rows = await buildChunkRows(tenant, documentId, doc.collection, input.title, input.body, kindKey);
+  const rows = await buildChunkRows(
+    tenant,
+    documentId,
+    doc.collection,
+    input.title,
+    input.body,
+    kindKey,
+  );
   await db().insert(schema.ragChunk).values(rows);
   await db()
     .update(schema.ragDocument)
@@ -453,14 +479,16 @@ export async function updateEntry(
     .where(eq(schema.ragDocument.id, documentId));
   const jobId = await enqueueEmbed(tenant, documentId);
 
-  await db().insert(schema.outboxEvent).values({
-    id: newId(),
-    hfId: tenant.hfId,
-    aggregateType: "rag_document",
-    aggregateId: documentId,
-    eventType: "knowledge.updated",
-    payload: { title: input.title, chunks: rows.length },
-  });
+  await db()
+    .insert(schema.outboxEvent)
+    .values({
+      id: newId(),
+      hfId: tenant.hfId,
+      aggregateType: "rag_document",
+      aggregateId: documentId,
+      eventType: "knowledge.updated",
+      payload: { title: input.title, chunks: rows.length },
+    });
 
   return { id: documentId, chunks: rows.length, jobId };
 }

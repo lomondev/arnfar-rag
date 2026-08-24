@@ -1,26 +1,16 @@
 import { Elysia, t } from "elysia";
 
 import { devTenant } from "../../lib/tenant.ts";
-import {
-  TOOL_DESCRIPTORS,
-  coaSearch,
-  docSearch,
-  glossaryLookup,
-  vatCalc,
-} from "./service.ts";
+import { coaSearch, docSearch, glossaryLookup, TOOL_DESCRIPTORS, vatCalc } from "./service.ts";
 
 export const toolsRoutes = new Elysia({ prefix: "/tools" })
   .get("/", () => TOOL_DESCRIPTORS)
-  .post(
-    "/coa-search",
-    async ({ body }) => coaSearch(devTenant(), body.q, body.limit ?? 10),
-    {
-      body: t.Object({
-        q: t.String({ minLength: 1 }),
-        limit: t.Optional(t.Number({ minimum: 1, maximum: 50 })),
-      }),
-    },
-  )
+  .post("/coa-search", async ({ body }) => coaSearch(devTenant(), body.q, body.limit ?? 10), {
+    body: t.Object({
+      q: t.String({ minLength: 1 }),
+      limit: t.Optional(t.Number({ minimum: 1, maximum: 50 })),
+    }),
+  })
   .post(
     "/glossary-lookup",
     async ({ body }) => glossaryLookup(devTenant(), body.q, body.limit ?? 10),
@@ -51,8 +41,7 @@ export const toolsRoutes = new Elysia({ prefix: "/tools" })
   )
   .post(
     "/doc-search",
-    async ({ body }) =>
-      docSearch(devTenant(), body.q, body.k ?? 8, body.collections),
+    async ({ body }) => docSearch(devTenant(), body.q, body.k ?? 8, body.collections),
     {
       body: t.Object({
         q: t.String({ minLength: 1 }),

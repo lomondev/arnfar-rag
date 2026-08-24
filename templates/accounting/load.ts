@@ -35,14 +35,26 @@ function parseCsv(text: string): Record<string, string>[] {
     const c = text[i];
     if (inQuotes) {
       if (c === '"') {
-        if (text[i + 1] === '"') { field += '"'; i++; } else inQuotes = false;
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else inQuotes = false;
       } else field += c;
     } else if (c === '"') inQuotes = true;
-    else if (c === ",") { row.push(field); field = ""; }
-    else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
-    else if (c !== "\r") field += c;
+    else if (c === ",") {
+      row.push(field);
+      field = "";
+    } else if (c === "\n") {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else if (c !== "\r") field += c;
   }
-  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
   const header = rows.shift();
   if (!header) return [];
   return rows
@@ -51,9 +63,17 @@ function parseCsv(text: string): Record<string, string>[] {
 }
 
 const arr = (s: string | undefined): string[] =>
-  s ? s.split("|").map((x) => x.trim()).filter(Boolean) : [];
+  s
+    ? s
+        .split("|")
+        .map((x) => x.trim())
+        .filter(Boolean)
+    : [];
 
-interface PostResult { status: number; json: Record<string, unknown> | null; }
+interface PostResult {
+  status: number;
+  json: Record<string, unknown> | null;
+}
 async function jpost(path: string, body: unknown): Promise<PostResult> {
   const res = await fetch(`${API}${path}`, {
     method: "POST",
@@ -61,7 +81,11 @@ async function jpost(path: string, body: unknown): Promise<PostResult> {
     body: JSON.stringify(body),
   });
   let json: Record<string, unknown> | null = null;
-  try { json = (await res.json()) as Record<string, unknown>; } catch { /* no body */ }
+  try {
+    json = (await res.json()) as Record<string, unknown>;
+  } catch {
+    /* no body */
+  }
   return { status: res.status, json };
 }
 const errmsg = (j: Record<string, unknown> | null): string =>
@@ -71,13 +95,17 @@ async function health(): Promise<boolean> {
   try {
     const res = await fetch(`${API}/health`);
     return res.ok;
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }
 
 // ── accounts ──────────────────────────────────────────────────────────────────
 async function loadAccounts(): Promise<void> {
   const rows = parseCsv(await Bun.file(`${DIR}/chart-of-accounts.csv`).text());
-  let created = 0, skipped = 0, failed = 0;
+  let created = 0,
+    skipped = 0,
+    failed = 0;
   for (const a of rows) {
     const body = {
       code: a.code,
@@ -91,15 +119,22 @@ async function loadAccounts(): Promise<void> {
     const { status, json } = await jpost("/accounts/", body);
     if (status === 201) created++;
     else if (status === 409) skipped++;
-    else { failed++; console.log(`  ✗ account ${a.code}: ${status} ${errmsg(json)}`); }
+    else {
+      failed++;
+      console.log(`  ✗ account ${a.code}: ${status} ${errmsg(json)}`);
+    }
   }
-  console.log(`accounts:  ${created} created, ${skipped} already existed, ${failed} failed  (${rows.length} rows)`);
+  console.log(
+    `accounts:  ${created} created, ${skipped} already existed, ${failed} failed  (${rows.length} rows)`,
+  );
 }
 
 // ── glossary ──────────────────────────────────────────────────────────────────
 async function loadGlossary(): Promise<void> {
   const rows = parseCsv(await Bun.file(`${DIR}/glossary.csv`).text());
-  let created = 0, skipped = 0, failed = 0;
+  let created = 0,
+    skipped = 0,
+    failed = 0;
   for (const t of rows) {
     const body = {
       termLo: t.term_lo,
@@ -113,9 +148,14 @@ async function loadGlossary(): Promise<void> {
     const { status, json } = await jpost("/glossary/", body);
     if (status === 201) created++;
     else if (status === 409) skipped++;
-    else { failed++; console.log(`  ✗ term ${t.term_lo}: ${status} ${errmsg(json)}`); }
+    else {
+      failed++;
+      console.log(`  ✗ term ${t.term_lo}: ${status} ${errmsg(json)}`);
+    }
   }
-  console.log(`glossary:  ${created} created, ${skipped} already existed, ${failed} failed  (${rows.length} rows)`);
+  console.log(
+    `glossary:  ${created} created, ${skipped} already existed, ${failed} failed  (${rows.length} rows)`,
+  );
 }
 
 // ── qa ────────────────────────────────────────────────────────────────────────
@@ -130,8 +170,12 @@ interface QaTemplate {
 }
 async function loadQa(): Promise<void> {
   const lines = (await Bun.file(`${DIR}/qa.jsonl`).text())
-    .split("\n").map((l) => l.trim()).filter(Boolean);
-  let created = 0, failed = 0, unresolved = 0;
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  let created = 0,
+    failed = 0,
+    unresolved = 0;
   for (const line of lines) {
     const q = JSON.parse(line) as QaTemplate;
     let citationIds = (q.citation_ids ?? []).filter((id) => UUID.test(id));
@@ -165,9 +209,14 @@ async function loadQa(): Promise<void> {
     };
     const { status, json } = await jpost("/qa/", body);
     if (status === 200 || status === 201) created++;
-    else { failed++; console.log(`  ✗ qa "${q.question_lo}": ${status} ${errmsg(json)}`); }
+    else {
+      failed++;
+      console.log(`  ✗ qa "${q.question_lo}": ${status} ${errmsg(json)}`);
+    }
   }
-  console.log(`qa:        ${created} created, ${unresolved} unresolved, ${failed} failed  (${lines.length} rows)`);
+  console.log(
+    `qa:        ${created} created, ${unresolved} unresolved, ${failed} failed  (${lines.length} rows)`,
+  );
 }
 
 // ── main ──────────────────────────────────────────────────────────────────────
@@ -179,5 +228,7 @@ if (!(await health())) {
 await loadAccounts();
 await loadGlossary();
 await loadQa();
-console.log(`\nDone. Everything is unverified — review and accept in /studio/accounts, /studio/glossary, /studio/qa.`);
+console.log(
+  `\nDone. Everything is unverified — review and accept in /studio/accounts, /studio/glossary, /studio/qa.`,
+);
 console.log(`Then: POST /qa/assign-splits assigns train/dev/test by document before export.`);

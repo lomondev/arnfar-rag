@@ -1,0 +1,13 @@
+# Python tooling for the two sidecars. Installed into .venv-tools/ by scripts/py.sh —
+# never into the system interpreter, and never into the sidecar images (which install
+# only their own requirements.txt).
+#
+# Both sidecars are also installed here so ruff/mypy/pytest can import them.
+ruff==0.16.4
+mypy==1.14.1
+pytest==8.3.4
+# FastAPI's TestClient — lets the sidecar tests exercise real routes without a server.
+httpx==0.28.1
+
+-r services/lao-nlp/requirements.txt
+-r services/docx-extractor/requirements.txt

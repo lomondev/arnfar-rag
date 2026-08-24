@@ -4,8 +4,8 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../../lib/db.ts";
 import { newId } from "../../lib/ids.ts";
 import { segment } from "../../lib/sidecars.ts";
-import type { Tenant } from "./pipeline.ts";
 import { fixLaoDefects, scanLaoDefects } from "../lao/clean.ts";
+import type { Tenant } from "./pipeline.ts";
 
 /** Retro-clean the EXISTING corpus: chunks ingested before the clean stage existed carry
  *  defects (doubled vowels, broken syllables, zero-width junk) in their derived columns.
@@ -35,10 +35,7 @@ export async function retroClean(tenant: Tenant, dryRun: boolean): Promise<Retro
     })
     .from(schema.ragChunk)
     .where(
-      and(
-        eq(schema.ragChunk.hfId, tenant.hfId),
-        eq(schema.ragChunk.companyId, tenant.companyId),
-      ),
+      and(eq(schema.ragChunk.hfId, tenant.hfId), eq(schema.ragChunk.companyId, tenant.companyId)),
     );
 
   const byDefect = { zeroWidth: 0, doubledMarks: 0, spaceBeforeMark: 0 };
@@ -87,26 +84,30 @@ export async function retroClean(tenant: Tenant, dryRun: boolean): Promise<Retro
   const reembedJobs: string[] = [];
   for (const documentId of perDoc.keys()) {
     const jobId = newId();
-    await db().insert(schema.ingestJob).values({
-      id: jobId,
-      hfId: tenant.hfId,
-      companyId: tenant.companyId,
-      documentId,
-      kind: "embed",
-      status: "queued",
-      payload: { reason: "retro-clean" },
-    });
+    await db()
+      .insert(schema.ingestJob)
+      .values({
+        id: jobId,
+        hfId: tenant.hfId,
+        companyId: tenant.companyId,
+        documentId,
+        kind: "embed",
+        status: "queued",
+        payload: { reason: "retro-clean" },
+      });
     reembedJobs.push(jobId);
   }
 
-  await db().insert(schema.outboxEvent).values({
-    id: newId(),
-    hfId: tenant.hfId,
-    aggregateType: "rag_chunk",
-    aggregateId: affected[0]!.id,
-    eventType: "corpus.retro_cleaned",
-    payload: { affected: affected.length, byDefect },
-  });
+  await db()
+    .insert(schema.outboxEvent)
+    .values({
+      id: newId(),
+      hfId: tenant.hfId,
+      aggregateType: "rag_chunk",
+      aggregateId: affected[0]!.id,
+      eventType: "corpus.retro_cleaned",
+      payload: { affected: affected.length, byDefect },
+    });
 
   return { ...report, fixed, reembedJobs };
 }
@@ -155,18 +156,20 @@ export async function deleteDocument(
 
   await db().delete(schema.ragDocument).where(eq(schema.ragDocument.id, documentId));
 
-  await db().insert(schema.outboxEvent).values({
-    id: newId(),
-    hfId: tenant.hfId,
-    aggregateType: "rag_document",
-    aggregateId: documentId,
-    eventType: "document.deleted",
-    payload: {
-      title: doc.title,
-      deletedChunks: chunkIds.length,
-      releasedSupersession: released.length,
-    },
-  });
+  await db()
+    .insert(schema.outboxEvent)
+    .values({
+      id: newId(),
+      hfId: tenant.hfId,
+      aggregateType: "rag_document",
+      aggregateId: documentId,
+      eventType: "document.deleted",
+      payload: {
+        title: doc.title,
+        deletedChunks: chunkIds.length,
+        releasedSupersession: released.length,
+      },
+    });
 
   return {
     id: documentId,
@@ -274,14 +277,16 @@ export async function supersedeDocument(
     .set({ supersededBy, updatedAt: new Date() })
     .where(eq(schema.ragDocument.id, documentId));
 
-  await db().insert(schema.outboxEvent).values({
-    id: newId(),
-    hfId: tenant.hfId,
-    aggregateType: "rag_document",
-    aggregateId: documentId,
-    eventType: supersededBy ? "document.superseded" : "document.supersession_cleared",
-    payload: { title: doc.title, supersededBy, supersededByTitle: targetTitle },
-  });
+  await db()
+    .insert(schema.outboxEvent)
+    .values({
+      id: newId(),
+      hfId: tenant.hfId,
+      aggregateType: "rag_document",
+      aggregateId: documentId,
+      eventType: supersededBy ? "document.superseded" : "document.supersession_cleared",
+      payload: { title: doc.title, supersededBy, supersededByTitle: targetTitle },
+    });
 
   return { id: doc.id, title: doc.title, supersededBy, supersededByTitle: targetTitle };
 }
@@ -301,10 +306,7 @@ export async function citedQaCount(tenant: Tenant, documentId: string): Promise<
     .select({ id: schema.laoQaPair.id, citationIds: schema.laoQaPair.citationIds })
     .from(schema.laoQaPair)
     .where(
-      and(
-        eq(schema.laoQaPair.hfId, tenant.hfId),
-        eq(schema.laoQaPair.companyId, tenant.companyId),
-      ),
+      and(eq(schema.laoQaPair.hfId, tenant.hfId), eq(schema.laoQaPair.companyId, tenant.companyId)),
     );
   const cited = new Set(chunkIds);
   return qa.filter((q) => q.citationIds.some((c) => cited.has(c))).length;

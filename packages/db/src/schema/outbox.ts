@@ -17,9 +17,5 @@ export const outboxEvent = pgTable(
     publishedAt: timestamp("published_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [
-    index("outbox_unpublished")
-      .on(t.createdAt)
-      .where(sql`published_at IS NULL`),
-  ],
+  (t) => [index("outbox_unpublished").on(t.createdAt).where(sql`published_at IS NULL`)],
 );

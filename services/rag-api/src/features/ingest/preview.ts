@@ -1,8 +1,8 @@
-import { segment, type ExtractBlock } from "../../lib/sidecars.ts";
+import { type ExtractBlock, segment } from "../../lib/sidecars.ts";
+import { fixLaoDefects, type LaoDefects, scanLaoDefects } from "../lao/clean.ts";
 import { chunkBlocks, type SegBlock } from "./chunker.ts";
 import { extractFile } from "./extract.ts";
 import { blockText } from "./pipeline.ts";
-import { fixLaoDefects, scanLaoDefects, type LaoDefects } from "../lao/clean.ts";
 
 /** Dry-run of the ingest pipeline: extract → clean → chunk, NO database writes.
  *  Powers the workbench's Clean and Chunk stages so a curator sees exactly what
@@ -27,7 +27,12 @@ export interface PreviewResult {
   byKind: Record<string, number>;
   totalTokens: number;
   accountRows: number;
-  defectTotals: { zeroWidth: number; doubledMarks: number; spaceBeforeMark: number; affectedChunks: number };
+  defectTotals: {
+    zeroWidth: number;
+    doubledMarks: number;
+    spaceBeforeMark: number;
+    affectedChunks: number;
+  };
   warnings: string[];
 }
 

@@ -32,19 +32,13 @@ async function erpStatus() {
  *  functions via deterministic intent detection (see chat/service.ts). */
 export const erpRoutes = new Elysia({ prefix: "/erp" })
   .get("/status", erpStatus)
-  .post(
-    "/customer-outstanding",
-    async ({ body }) => customerOutstanding(body.q),
-    { body: t.Object({ q: t.Optional(t.String()) }) },
-  )
-  .post(
-    "/invoice-lookup",
-    async ({ body }) => invoiceLookup(body.q),
-    { body: t.Object({ q: t.String({ minLength: 1 }) }) },
-  )
-  .post(
-    "/account-balance",
-    async ({ body }) => accountBalance(body.code),
-    { body: t.Object({ code: t.String({ minLength: 1, maxLength: 6, pattern: "^\\d+$" }) }) },
-  )
+  .post("/customer-outstanding", async ({ body }) => customerOutstanding(body.q), {
+    body: t.Object({ q: t.Optional(t.String()) }),
+  })
+  .post("/invoice-lookup", async ({ body }) => invoiceLookup(body.q), {
+    body: t.Object({ q: t.String({ minLength: 1 }) }),
+  })
+  .post("/account-balance", async ({ body }) => accountBalance(body.code), {
+    body: t.Object({ code: t.String({ minLength: 1, maxLength: 6, pattern: "^\\d+$" }) }),
+  })
   .get("/trial-balance", async () => trialBalance());

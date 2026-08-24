@@ -8,7 +8,7 @@ import { prepareQuery } from "../search/service.ts";
 import { ragAnswer } from "./generate.ts";
 import { judgeFaithfulness } from "./judge.ts";
 import { hitRank, mean, percentile, recallAtK, reciprocalRank } from "./metrics.ts";
-import { retrieve, type Retriever } from "./retrievers.ts";
+import { type Retriever, retrieve } from "./retrievers.ts";
 
 export interface EvalConfig {
   retriever: Retriever;
@@ -49,16 +49,18 @@ export async function runEval(tenant: TenantContext, cfg: EvalConfig) {
     );
 
   const runId = newId();
-  await db().insert(schema.evalRun).values({
-    id: runId,
-    hfId: tenant.hfId,
-    companyId: tenant.companyId,
-    embedModel: "bge-m3",
-    genModel: cfg.genModel,
-    retriever: cfg.retriever,
-    params: { collections, top_k: TOP_K, judge_model: cfg.judgeModel, generate: cfg.generate },
-    nQueries: pairs.length,
-  });
+  await db()
+    .insert(schema.evalRun)
+    .values({
+      id: runId,
+      hfId: tenant.hfId,
+      companyId: tenant.companyId,
+      embedModel: "bge-m3",
+      genModel: cfg.genModel,
+      retriever: cfg.retriever,
+      params: { collections, top_k: TOP_K, judge_model: cfg.judgeModel, generate: cfg.generate },
+      nQueries: pairs.length,
+    });
 
   const r5: number[] = [];
   const r10: number[] = [];
@@ -150,7 +152,8 @@ export async function runEval(tenant: TenantContext, cfg: EvalConfig) {
       mrr: mrr.toFixed(4),
       faithfulness: faithfulness === null ? null : faithfulness.toFixed(4),
       p95LatencyMs: p95,
-      notes: abstentionRate === null ? null : `abstention_on_adversarial=${abstentionRate.toFixed(2)}`,
+      notes:
+        abstentionRate === null ? null : `abstention_on_adversarial=${abstentionRate.toFixed(2)}`,
     })
     .where(eq(schema.evalRun.id, runId));
 

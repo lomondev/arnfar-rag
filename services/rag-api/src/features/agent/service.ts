@@ -2,11 +2,11 @@ import type { TenantContext } from "@arnfar/db";
 import { schema } from "@arnfar/db";
 import { and, eq } from "drizzle-orm";
 
-import { getDomain, type DomainConfig } from "../../domains/registry.ts";
+import { type DomainConfig, getDomain } from "../../domains/registry.ts";
 import { getRole } from "../../domains/roles.ts";
 import { db } from "../../lib/db.ts";
 import { generate } from "../../lib/ollama.ts";
-import { buildContext, buildSystemPrompt, toSources, type CitationSource } from "../chat/prompt.ts";
+import { buildContext, buildSystemPrompt, type CitationSource, toSources } from "../chat/prompt.ts";
 import { search } from "../search/service.ts";
 import { coaSearch, glossaryLookup } from "../tools/service.ts";
 

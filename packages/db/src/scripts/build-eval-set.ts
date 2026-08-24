@@ -20,8 +20,10 @@ try {
   const docId = real[0].id;
 
   // 1. purge everything else (dev-tenant non-real docs + the synthetic bench tenant).
-  const delDocs = await sql`DELETE FROM rag_document WHERE hf_id=${HF} AND id<>${docId} RETURNING id`;
-  const delBench = await sql`DELETE FROM rag_document WHERE hf_id='018f0000-0000-7000-8000-0000000000bb' RETURNING id`;
+  const delDocs =
+    await sql`DELETE FROM rag_document WHERE hf_id=${HF} AND id<>${docId} RETURNING id`;
+  const delBench =
+    await sql`DELETE FROM rag_document WHERE hf_id='018f0000-0000-7000-8000-0000000000bb' RETURNING id`;
   await sql`DELETE FROM lao_account WHERE hf_id=${HF} AND (document_id IS NULL OR document_id<>${docId})`;
   await sql`DELETE FROM lao_qa_pair WHERE hf_id=${HF}`;
   console.log(`purged ${delDocs.length} dev docs + ${delBench.length} bench docs; cleared QA`);
@@ -36,7 +38,10 @@ try {
   for (const r of rows) {
     const code = (r.code ?? "").trim();
     if (!/^[0-9]{3,6}$/.test(code)) continue;
-    const name = r.content.replace(new RegExp(`^${code}\\s*`), "").split("—")[0]!.trim();
+    const name = r.content
+      .replace(new RegExp(`^${code}\\s*`), "")
+      .split("—")[0]!
+      .trim();
     if (!name) continue;
     const e = byCode.get(code) ?? { name, ids: [] };
     e.ids.push(r.id);
@@ -44,10 +49,7 @@ try {
   }
 
   // 3. build questions (alternate templates so it's not one fixed phrasing).
-  const templates = (name: string) => [
-    `ບັນຊີ ${name} ມີລະຫັດຫຍັງ?`,
-    `ລະຫັດ ຂອງ ${name} ແມ່ນຫຍັງ?`,
-  ];
+  const templates = (name: string) => [`ບັນຊີ ${name} ມີລະຫັດຫຍັງ?`, `ລະຫັດ ຂອງ ${name} ແມ່ນຫຍັງ?`];
   let seq = 0;
   const codes = [...byCode.entries()];
   for (const [code, { name, ids }] of codes) {

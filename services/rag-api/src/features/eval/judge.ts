@@ -47,6 +47,11 @@ export async function judgeFaithfulness(
       reason: (p.reason ?? "").toString().slice(0, 500),
     };
   } catch {
-    return { score: 1, supported: false, abstained: false, reason: `unparseable judge output: ${raw.slice(0, 80)}` };
+    return {
+      score: 1,
+      supported: false,
+      abstained: false,
+      reason: `unparseable judge output: ${raw.slice(0, 80)}`,
+    };
   }
 }

@@ -1,7 +1,6 @@
 import { createDb, type Database } from "@arnfar/db";
-
-import { env } from "./env.ts";
 import { db } from "./db.ts";
+import { env } from "./env.ts";
 
 /** Connection to the COMPANY'S ERP DATABASE — the real one when ERP_DATABASE_URL is
  *  set, the app's own database (demo `erp` schema) otherwise.

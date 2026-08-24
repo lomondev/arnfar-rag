@@ -6,6 +6,7 @@ import { db } from "../../lib/db.ts";
 import { env } from "../../lib/env.ts";
 import { listGenModels } from "../../lib/ollama.ts";
 import { devTenant } from "../../lib/tenant.ts";
+import { createQa, verifyQa } from "../qa/service.ts";
 import {
   createConversation,
   deleteConversation,
@@ -13,7 +14,6 @@ import {
   listConversations,
   renameConversation,
 } from "./conversation.ts";
-import { createQa, verifyQa } from "../qa/service.ts";
 import { chatStream } from "./service.ts";
 
 export const chatRoutes = new Elysia({ prefix: "/chat" })
@@ -31,23 +31,22 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
     {
       body: t.Object({
         title: t.Optional(t.String({ minLength: 1, maxLength: 200 })),
-        lang: t.Optional(t.Union([t.Literal("lo"), t.Literal("en"), t.Literal("th"), t.Literal("mixed")])),
+        lang: t.Optional(
+          t.Union([t.Literal("lo"), t.Literal("en"), t.Literal("th"), t.Literal("mixed")]),
+        ),
         collection: t.Optional(t.String()),
       }),
     },
   )
   .get("/conversations", async () => listConversations(devTenant()))
-  .get(
-    "/conversations/:id",
-    async ({ params, set }) => {
-      const conv = await getConversation(devTenant(), params.id);
-      if (!conv) {
-        set.status = 404;
-        return { error: "not found" };
-      }
-      return conv;
-    },
-  )
+  .get("/conversations/:id", async ({ params, set }) => {
+    const conv = await getConversation(devTenant(), params.id);
+    if (!conv) {
+      set.status = 404;
+      return { error: "not found" };
+    }
+    return conv;
+  })
   .patch(
     "/conversations/:id",
     async ({ params, body, set }) => {
@@ -65,18 +64,17 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
     {
       body: t.Object({
         title: t.Optional(t.String({ minLength: 1, maxLength: 200 })),
-        lang: t.Optional(t.Union([t.Literal("lo"), t.Literal("en"), t.Literal("th"), t.Literal("mixed")])),
+        lang: t.Optional(
+          t.Union([t.Literal("lo"), t.Literal("en"), t.Literal("th"), t.Literal("mixed")]),
+        ),
         collection: t.Optional(t.Union([t.String(), t.Null()])),
       }),
     },
   )
-  .delete(
-    "/conversations/:id",
-    async ({ params }) => {
-      const ok = await deleteConversation(devTenant(), params.id);
-      return { deleted: ok };
-    },
-  )
+  .delete("/conversations/:id", async ({ params }) => {
+    const ok = await deleteConversation(devTenant(), params.id);
+    return { deleted: ok };
+  })
 
   // ── Installed generator models (for the /chat model picker) ───────────────
   // Only rag-api may touch Ollama (CLAUDE.md), so the web app fetches the model list

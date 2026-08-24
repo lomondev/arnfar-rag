@@ -19,7 +19,12 @@ export async function draftQaFromChunk(content: string): Promise<DraftedQa> {
     `From this text only, write ONE Lao question a Lao accountant might ask and its ` +
     `answer. Respond as JSON: {"question_lo": "...", "answer_lo": "..."}. Lao only.`;
 
-  const raw = await generate(prompt, { system: SYSTEM, json: true, temperature: 0.3, maxTokens: 400 });
+  const raw = await generate(prompt, {
+    system: SYSTEM,
+    json: true,
+    temperature: 0.3,
+    maxTokens: 400,
+  });
   let parsed: Partial<DraftedQa>;
   try {
     parsed = JSON.parse(raw) as Partial<DraftedQa>;

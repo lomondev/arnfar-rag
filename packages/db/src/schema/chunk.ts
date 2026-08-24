@@ -1,17 +1,7 @@
 import { sql } from "drizzle-orm";
-import {
-  index,
-  integer,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  unique,
-  uuid,
-} from "drizzle-orm/pg-core";
-
-import { chunkKind, reviewState } from "./enums.ts";
+import { index, integer, jsonb, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { ragDocument } from "./document.ts";
+import { chunkKind, reviewState } from "./enums.ts";
 import { halfvec, tsvector } from "./vectors.ts";
 
 /** Chunks — the retrieval unit. hf_id/company_id are denormalized so tenant
@@ -56,9 +46,7 @@ export const ragChunk = pgTable(
     // HNSW index is created post-load by db:index:hnsw (decision C) — NOT here.
     index("rag_chunk_fts_gin").using("gin", t.fts),
     index("rag_chunk_tenant").on(t.hfId, t.companyId, t.collection),
-    index("rag_chunk_review")
-      .on(t.hfId, t.companyId, t.review)
-      .where(sql`review = 'pending'`),
+    index("rag_chunk_review").on(t.hfId, t.companyId, t.review).where(sql`review = 'pending'`),
     index("rag_chunk_meta_gin").using("gin", sql`meta jsonb_path_ops`),
   ],
 );

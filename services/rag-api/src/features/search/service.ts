@@ -1,5 +1,5 @@
-import { schema } from "@arnfar/db";
 import type { TenantContext } from "@arnfar/db";
+import { schema } from "@arnfar/db";
 import { and, eq, sql } from "drizzle-orm";
 
 import { db } from "../../lib/db.ts";
@@ -78,10 +78,7 @@ export interface PreparedQuery {
  *  The eval harness calls this too, so a run measures the production query pipeline
  *  (segmentation AND glossary expansion) instead of a lookalike that quietly omits a
  *  step — otherwise eval's lexical arm sees a different string than a user's does. */
-export async function prepareQuery(
-  query: string,
-  tenant: TenantContext,
-): Promise<PreparedQuery> {
+export async function prepareQuery(query: string, tenant: TenantContext): Promise<PreparedQuery> {
   // Segment (lexical), embed (dense) and look up glossary terms in parallel.
   const [seg, queryEmbedding, expansion] = await Promise.all([
     segment(query),

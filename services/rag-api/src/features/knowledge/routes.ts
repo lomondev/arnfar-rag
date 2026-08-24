@@ -53,7 +53,10 @@ export const knowledgeRoutes = new Elysia({ prefix: "/knowledge" })
       }
       if ("blocked" in res) {
         set.status = 409;
-        return { error: `${res.citedQa} QA pair(s) cite entries of this kind`, citedQa: res.citedQa };
+        return {
+          error: `${res.citedQa} QA pair(s) cite entries of this kind`,
+          citedQa: res.citedQa,
+        };
       }
       return { ...res, deleted: true };
     },
@@ -66,18 +69,19 @@ export const knowledgeRoutes = new Elysia({ prefix: "/knowledge" })
       const res = await deleteAllEntries(devTenant(), query.kind, query.force === "1");
       if ("blocked" in res) {
         set.status = 409;
-        return { error: `${res.citedQa} QA pair(s) cite entries of this kind`, citedQa: res.citedQa };
+        return {
+          error: `${res.citedQa} QA pair(s) cite entries of this kind`,
+          citedQa: res.citedQa,
+        };
       }
       return res;
     },
     { query: t.Object({ kind: KEY, force: t.Optional(t.String()) }) },
   )
   /* ── entries ── */
-  .get(
-    "/entries",
-    async ({ query }) => listEntries(devTenant(), query.kind),
-    { query: t.Object({ kind: KEY }) },
-  )
+  .get("/entries", async ({ query }) => listEntries(devTenant(), query.kind), {
+    query: t.Object({ kind: KEY }),
+  })
   .post(
     "/entries",
     async ({ body, set }) => {

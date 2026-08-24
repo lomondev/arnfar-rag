@@ -1,16 +1,7 @@
 import { sql } from "drizzle-orm";
-import {
-  index,
-  integer,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
-
-import { jobStatus } from "./enums.ts";
+import { index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { ragDocument } from "./document.ts";
+import { jobStatus } from "./enums.ts";
 
 /** Ingestion job queue — replaces RabbitMQ (CLAUDE.md decision B). Workers claim
  *  rows with SELECT ... FOR UPDATE SKIP LOCKED. Embedding is idempotent and

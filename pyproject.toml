@@ -1,0 +1,69 @@
+# Tooling config for the two Python sidecars (services/lao-nlp, services/docx-extractor).
+# There is no Python package to build here — the sidecars are copied into their own images
+# and run by uvicorn. This file exists so ruff, mypy, and pytest share one configuration
+# instead of three copies drifting apart.
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["services/lao-nlp", "services/docx-extractor"]
+extend-exclude = [".venv-tools", "node_modules", "storage", "backups", "datasets"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # import sorting
+    "UP",   # pyupgrade — keep the 3.12 idioms current
+    "B",    # bugbear
+    "SIM",  # simplify
+    "RUF",  # ruff-specific
+    # The sidecars already carry `# noqa: BLE001` markers — the author expected this on.
+    "BLE",  # blind except
+]
+ignore = [
+    # FastAPI's Depends()/Query() defaults are function calls in argument position by design.
+    "B008",
+    # "Ambiguous unicode character" — this is a Lao codebase. Lao digits (໐-໙) and the Lao
+    # block boundaries (຀-໿) appear in regex ranges because they are the subject matter,
+    # not because someone pasted a lookalike. Flagging them makes the rule pure noise here.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test files assert on private helpers and re-import fixtures freely.
+"**/tests/*" = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+# No `files` here on purpose: both sidecars define a top-level package called `app`, so a
+# single mypy run cannot see both (duplicate module). scripts/lint-py.sh invokes mypy once
+# per sidecar, each with that sidecar as the module root.
+strict = true
+# The sidecars import laonlp and python-docx, neither of which ships type stubs.
+ignore_missing_imports = true
+# Pydantic models on FastAPI routes are checked by pydantic itself at runtime; mypy's
+# view of the decorators adds noise without adding safety.
+disallow_untyped_decorators = false
+
+# Neither dependency ships a py.typed marker. They are installed and importable — mypy
+# just cannot see their types — so treat their surface as Any rather than failing the run.
+[[tool.mypy.overrides]]
+module = ["laonlp.*", "laonlp", "docx.*", "docx"]
+ignore_missing_imports = true
+follow_untyped_imports = true
+
+[tool.pytest.ini_options]
+# No testpaths/pythonpath here, for the same reason [tool.mypy] has no `files`: both
+# sidecars define a top-level package called `app`, so one collection run cannot import
+# both. `bun run test:py` invokes pytest once per sidecar, from inside that sidecar.
+addopts = "-q"
+filterwarnings = [
+    # The sidecars run on Python 3.12 in their containers; the local tooling venv may be
+    # newer, where starlette/fastapi still call the deprecated asyncio.iscoroutinefunction.
+    # Not our code and not our runtime — silenced so a real warning stays visible.
+    "ignore:'asyncio.iscoroutinefunction' is deprecated:DeprecationWarning",
+]

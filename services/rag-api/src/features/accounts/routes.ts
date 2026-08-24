@@ -17,12 +17,7 @@ const accountClass = t.Union([
   t.Literal("expense"),
 ]);
 const normalBalance = t.Union([t.Literal("debit"), t.Literal("credit")]);
-const statement = t.Union([
-  t.Literal("BS"),
-  t.Literal("PL"),
-  t.Literal("CF"),
-  t.Literal("NONE"),
-]);
+const statement = t.Union([t.Literal("BS"), t.Literal("PL"), t.Literal("CF"), t.Literal("NONE")]);
 
 export const accountsRoutes = new Elysia({ prefix: "/accounts" })
   .get("/", async ({ query }) => {

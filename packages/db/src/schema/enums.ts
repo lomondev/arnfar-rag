@@ -18,21 +18,11 @@ export const chunkKind = pgEnum("chunk_kind", [
   "list",
 ]);
 
-export const reviewState = pgEnum("review_state", [
-  "pending",
-  "accepted",
-  "edited",
-  "rejected",
-]);
+export const reviewState = pgEnum("review_state", ["pending", "accepted", "edited", "rejected"]);
 
 export const qaSource = pgEnum("qa_source", ["human", "llm_draft", "chat_promoted"]);
 
 export const qaSplit = pgEnum("qa_split", ["train", "dev", "test", "unassigned"]);
 
 /** Job queue state — Postgres SKIP LOCKED replaces RabbitMQ (CLAUDE.md decision B). */
-export const jobStatus = pgEnum("job_status", [
-  "queued",
-  "running",
-  "done",
-  "failed",
-]);
+export const jobStatus = pgEnum("job_status", ["queued", "running", "done", "failed"]);

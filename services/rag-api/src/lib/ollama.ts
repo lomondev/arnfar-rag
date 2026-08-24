@@ -45,9 +45,7 @@ async function embedBatch(texts: string[]): Promise<number[][]> {
   const res = await postWithRetry("/api/embed", { model: env.embedModel, input: texts });
   const data = (await res.json()) as EmbedResponse;
   if (!data.embeddings || data.embeddings.length !== texts.length) {
-    throw new Error(
-      `embed: expected ${texts.length} vectors, got ${data.embeddings?.length ?? 0}`,
-    );
+    throw new Error(`embed: expected ${texts.length} vectors, got ${data.embeddings?.length ?? 0}`);
   }
   return data.embeddings;
 }
@@ -165,6 +163,7 @@ export async function* generateStream(
     if (done) break;
     buf += decoder.decode(value, { stream: true });
     let nl: number;
+    // biome-ignore lint/suspicious/noAssignInExpressions: the assign-and-test loop is the standard incremental-scan idiom; splitting it duplicates the advance.
     while ((nl = buf.indexOf("\n")) >= 0) {
       const line = buf.slice(0, nl).trim();
       buf = buf.slice(nl + 1);

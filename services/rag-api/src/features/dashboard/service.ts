@@ -1,5 +1,5 @@
-import { schema } from "@arnfar/db";
 import type { TenantContext } from "@arnfar/db";
+import { schema } from "@arnfar/db";
 import { and, desc, eq, sql } from "drizzle-orm";
 
 import { db } from "../../lib/db.ts";
@@ -63,7 +63,9 @@ export async function overview(tenant: TenantContext): Promise<Overview> {
     .groupBy(schema.ragChunk.collection)
     .orderBy(sql`count(*) desc`);
 
-  const counted = async (table: typeof schema.laoQaPair | typeof schema.laoTerm | typeof schema.laoAccount) => {
+  const counted = async (
+    table: typeof schema.laoQaPair | typeof schema.laoTerm | typeof schema.laoAccount,
+  ) => {
     const [r] = await db()
       .select({
         total: sql<number>`count(*)::int`,

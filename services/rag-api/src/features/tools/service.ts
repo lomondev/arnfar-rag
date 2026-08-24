@@ -30,8 +30,7 @@ export const TOOL_DESCRIPTORS: ToolDescriptor[] = [
   {
     key: "glossary_lookup",
     nameEn: "Glossary lookup",
-    description:
-      "Look up Lao accounting terms and their English glosses (verified terms first).",
+    description: "Look up Lao accounting terms and their English glosses (verified terms first).",
     params: { q: "Lao or English fragment", limit: "max rows (default 10)" },
   },
   {
@@ -49,7 +48,11 @@ export const TOOL_DESCRIPTORS: ToolDescriptor[] = [
     key: "doc_search",
     nameEn: "Document search",
     description: "Hybrid (dense + lexical) search over the ingested document corpus.",
-    params: { q: "natural-language query", k: "top-k (default 8)", collections: "optional collection filter" },
+    params: {
+      q: "natural-language query",
+      k: "top-k (default 8)",
+      collections: "optional collection filter",
+    },
   },
 ];
 
@@ -159,12 +162,7 @@ export function vatCalc(input: VatInput): VatResult {
   };
 }
 
-export async function docSearch(
-  tenant: TenantContext,
-  q: string,
-  k = 8,
-  collections?: string[],
-) {
+export async function docSearch(tenant: TenantContext, q: string, k = 8, collections?: string[]) {
   const res = await search({
     query: q,
     ...(collections?.length ? { collections } : {}),

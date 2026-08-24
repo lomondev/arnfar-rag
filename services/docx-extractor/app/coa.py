@@ -13,7 +13,9 @@ disposes. name_en, parent_code, account_class are left for human curation.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import TypedDict
 
 _CODE = re.compile(r"^[0-9໐-໙]{3,6}$")
 _LAO = re.compile(r"[຀-໿]")
@@ -21,6 +23,16 @@ _LATIN = re.compile(r"[A-Za-z]")
 
 MIN_COLS = 3
 THRESHOLD = 0.80
+
+
+class CoARow(TypedDict):
+    """One detected account row. Named rather than dict[str, object] so the block
+    builder in extractor.py gets str/list[str] instead of object."""
+
+    code: str
+    name_lo: str
+    name_en: str | None
+    raw_row: list[str]
 
 
 @dataclass
@@ -31,7 +43,7 @@ class CoADetection:
     lao_col: int = -1
     en_col: int = -1
     header_row: int = 0
-    rows: list[dict] = field(default_factory=list)  # {code, name_lo, name_en, raw_row}
+    rows: list[CoARow] = field(default_factory=list)
 
 
 def _columns(matrix: list[list[str]]) -> list[list[str]]:
@@ -41,7 +53,7 @@ def _columns(matrix: list[list[str]]) -> list[list[str]]:
     return [[(r[c] if c < len(r) else "") for r in matrix] for c in range(n_cols)]
 
 
-def _ratio(cells: list[str], pred) -> float:
+def _ratio(cells: list[str], pred: Callable[[str], bool]) -> float:
     vals = [c for c in cells if c.strip()]
     if not vals:
         return 0.0
@@ -78,33 +90,27 @@ def detect(matrix: list[list[str]]) -> CoADetection:
     lao_scores = [(_ratio(col, _is_lao), i) for i, col in enumerate(body_cols)]
     code_ratio, code_col = max(code_scores)
     # Pick the best Lao column that is not the code column.
-    lao_ratio, lao_col = max(
-        ((r, i) for r, i in lao_scores if i != code_col), default=(0.0, -1)
-    )
+    lao_ratio, lao_col = max(((r, i) for r, i in lao_scores if i != code_col), default=(0.0, -1))
 
     if code_ratio < THRESHOLD or lao_ratio < THRESHOLD or lao_col < 0:
         return CoADetection(is_coa=False, confidence=min(code_ratio, lao_ratio))
 
     # Optional English gloss column: best latin column that is neither code nor lao.
     en_candidates = [
-        (_ratio(col, _is_en), i)
-        for i, col in enumerate(body_cols)
-        if i not in (code_col, lao_col)
+        (_ratio(col, _is_en), i) for i, col in enumerate(body_cols) if i not in (code_col, lao_col)
     ]
     en_ratio, en_col = max(en_candidates, default=(0.0, -1))
     if en_ratio < 0.5:
         en_col = -1
 
-    rows: list[dict] = []
+    rows: list[CoARow] = []
     for raw in body:
         code = (raw[code_col] if code_col < len(raw) else "").strip()
         name_lo = (raw[lao_col] if lao_col < len(raw) else "").strip()
         if not _is_code(code) or not name_lo:
             continue  # not a real account row (e.g. a sub-total / blank)
         name_en = (raw[en_col].strip() if 0 <= en_col < len(raw) else "") or None
-        rows.append(
-            {"code": code, "name_lo": name_lo, "name_en": name_en, "raw_row": raw}
-        )
+        rows.append({"code": code, "name_lo": name_lo, "name_en": name_en, "raw_row": raw})
 
     return CoADetection(
         is_coa=len(rows) > 0,
