@@ -2,8 +2,9 @@
 
 import { Button } from "@arnfar/ui/components/button";
 import { useCallback, useEffect, useState } from "react";
+import { apiBaseUrl } from "@/lib/api";
 
-const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
+const BASE = apiBaseUrl();
 
 interface EvalRun {
   id: string;

@@ -3,7 +3,8 @@
   "compilerOptions": {
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "jsx": "preserve",
-    "types": ["node", "react"],
+    // "bun" for the `bun:test` import in src/**/__tests__; the app itself runs on Node.
+    "types": ["node", "react", "bun"],
     "plugins": [{ "name": "next" }],
     "incremental": true,
     "paths": {

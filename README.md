@@ -64,6 +64,48 @@ docker compose --profile app up -d --build   # + rag-api and web
 Ollama stays on the host in both modes — it needs the GPU, and inference never crosses the
 container boundary.
 
+## Serving the site over your network
+
+By default everything binds loopback and only this machine can use it. To let colleagues on
+the same network open the Studio from their own laptops or phones:
+
+```bash
+# .env
+RAG_API_HOST=0.0.0.0             # rag-api accepts connections from the network
+CORS_ALLOW_PRIVATE_NETWORK=true  # browsers on private addresses may call it
+NEXT_PUBLIC_RAG_API_URL=         # leave EMPTY — see below
+```
+
+Restart both services and find this machine's address with `hostname -I`. Everyone else
+opens `http://<that-address>:3000`. Nothing else to configure, and nothing to rebuild when
+the address changes.
+
+**Leave `NEXT_PUBLIC_RAG_API_URL` empty.** `NEXT_PUBLIC_*` values are substituted at build
+time, so a literal `http://localhost:7730` compiled into the bundle means "port 7730 on the
+machine running the browser" to every visitor — their own laptop, where nothing is
+listening. Left empty, the page derives the API address from the address it was opened on.
+Set it only for a deployment behind a fixed hostname or a reverse proxy, where there is
+nothing to derive.
+
+### Read this before you turn it on
+
+**rag-api has no authentication.** Anything that can reach port 7730 can read every ledger,
+document, and conversation in the database. There is no login, no API key, and no
+per-user scoping — the tenant is fixed by configuration.
+
+- `CORS_ALLOW_PRIVATE_NETWORK` is a convenience for browsers, **not** a security control.
+  Same-origin policy is enforced by the browser; `curl` ignores it completely. Widening
+  CORS lets the Studio work from a phone. It does not decide who can reach the data — the
+  bind address does.
+- Use this on a network you trust. Do not port-forward these ports, do not put them on a
+  public IP, and do not expose them through a tunnel. Everything in this database is
+  client accounting data, and local-first is the product's whole pitch.
+- If you need it reachable from outside the office, the honest answer is a VPN — or the
+  authentication layer, which is still unbuilt.
+
+`bun run dev:api` prints a warning on every boot while it is bound beyond loopback, so this
+is hard to leave on by accident.
+
 ## Checks
 
 ```bash

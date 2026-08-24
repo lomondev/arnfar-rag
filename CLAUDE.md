@@ -76,8 +76,16 @@ Full spec: [`PROMPT.md`](./PROMPT.md). Build proceeds in **approval-gated phases
 
 **Boundaries**
 - **Next.js never calls Ollama or the Python sidecars directly.** The browser and RSC talk ONLY
-  to `rag-api` (`NEXT_PUBLIC_RAG_API_URL`). `rag-api` is the only thing that touches Ollama,
-  lao-nlp, docx-extractor, and Postgres.
+  to `rag-api`. `rag-api` is the only thing that touches Ollama, lao-nlp, docx-extractor, and
+  Postgres.
+- **The API address is resolved at runtime, never hardcoded** (`apps/web/src/lib/api.ts`).
+  `NEXT_PUBLIC_*` is substituted at build time, so a literal `http://localhost:7730` in the
+  bundle means "the visitor's own machine" to everyone but the host. Import `apiBaseUrl()`;
+  do not reintroduce `process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:..."`.
+- **rag-api binds loopback unless told otherwise** (`RAG_API_HOST`). It has no auth layer, so
+  the bind address is the only thing between the ledgers and the network — and CORS is not a
+  substitute, since it binds browsers and not `curl`. Serving over a LAN is opt-in, warns on
+  every boot, and is documented in README "Serving the site over your network".
 
 ---
 

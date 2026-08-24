@@ -29,10 +29,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { renderMarkdown } from "@/features/chat/markdown";
 import { useCollections } from "@/features/studio/useCollections";
+import { apiBaseUrl } from "@/lib/api";
 
 const noCite = () => {};
 
-const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
+const BASE = apiBaseUrl();
 
 interface Kind {
   id: string;

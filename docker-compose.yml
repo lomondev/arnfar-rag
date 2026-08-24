@@ -62,13 +62,17 @@ services:
       dockerfile: services/rag-api/Dockerfile
     restart: unless-stopped
     ports:
-      - "${RAG_API_PORT:-7730}:7730"
+      - "${RAG_API_BIND:-0.0.0.0}:${RAG_API_PORT:-7730}:7730"
     environment:
       DATABASE_URL: ${DATABASE_URL}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       LAO_NLP_URL: http://lao-nlp:7731
       DOCX_EXTRACTOR_URL: http://docx-extractor:7732
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      CORS_ALLOW_PRIVATE_NETWORK: ${CORS_ALLOW_PRIVATE_NETWORK:-false}
+      # Inside a container, loopback would make the published port unreachable — the
+      # boundary here is the port mapping below, not the bind address.
+      RAG_API_HOST: 0.0.0.0
       DEV_HF_ID: ${DEV_HF_ID}
       DEV_COMPANY_ID: ${DEV_COMPANY_ID}
       NODE_ENV: production
@@ -93,11 +97,16 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         # Baked into the client bundle at build time — the browser resolves this, so it
-        # must be an address the browser can reach, not a compose service name.
-        NEXT_PUBLIC_RAG_API_URL: ${NEXT_PUBLIC_RAG_API_URL:-http://localhost:7730}
+        # must be an address the browser can reach, not a compose service name. Empty by
+        # default so the page derives it from the address it was opened on, which is what
+        # lets the same image serve localhost and a LAN IP.
+        NEXT_PUBLIC_RAG_API_URL: ${NEXT_PUBLIC_RAG_API_URL:-}
+        RAG_API_PORT: ${RAG_API_PORT:-7730}
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      # Publish on all interfaces so the LAN can reach it; set WEB_BIND=127.0.0.1 to keep
+      # it on this machine only.
+      - "${WEB_BIND:-0.0.0.0}:${WEB_PORT:-3000}:3000"
     depends_on:
       - rag-api
 

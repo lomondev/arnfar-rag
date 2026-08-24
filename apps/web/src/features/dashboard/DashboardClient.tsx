@@ -6,8 +6,9 @@ import { cn } from "@arnfar/ui/lib/utils";
 import { ArrowRight, FileUp, GraduationCap, MessageCircleQuestion, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { apiBaseUrl } from "@/lib/api";
 
-const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
+const BASE = apiBaseUrl();
 
 interface Overview {
   corpus: {

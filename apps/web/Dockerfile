@@ -28,8 +28,12 @@ COPY --from=deps /repo/packages/ui/node_modules ./packages/ui/node_modules
 COPY --from=deps /repo/packages/contracts/node_modules ./packages/contracts/node_modules
 
 # Baked into the client bundle at build time, so it cannot be changed by the runtime
-# environment — pass it as a build arg for any non-default deployment.
-ARG NEXT_PUBLIC_RAG_API_URL=http://localhost:7730
+# environment. Empty by default on purpose: the page then resolves the API from the address
+# it was loaded over (src/lib/api.ts), so one image works on localhost, on a LAN IP, and
+# behind a hostname. Set it only when the API lives somewhere the page cannot infer.
+ARG NEXT_PUBLIC_RAG_API_URL=
+ARG RAG_API_PORT=7730
+ENV RAG_API_PORT=$RAG_API_PORT
 ENV NEXT_PUBLIC_RAG_API_URL=$NEXT_PUBLIC_RAG_API_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN cd apps/web && bun run build

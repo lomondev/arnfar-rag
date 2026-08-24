@@ -11,10 +11,10 @@ import {
   parseResponse,
 } from "@arnfar/contracts";
 import { z } from "zod";
-
+import { apiBaseUrl } from "@/lib/api";
 import type { Conversation } from "./storage";
 
-const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
+const BASE = apiBaseUrl();
 
 /**
  * The wire shapes (ISO timestamps, nullable sources) live in @arnfar/contracts and are

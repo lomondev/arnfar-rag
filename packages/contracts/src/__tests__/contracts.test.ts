@@ -1,8 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { streamEvent } from "../chat.ts";
 import { exportRequest } from "../export.ts";
 import { term } from "../glossary.ts";
-import { chunkPatch, parseResponse, qaInput, reviewState } from "../index.ts";
+import {
+  chatRequest,
+  chunkPatch,
+  parseResponse,
+  qaInput,
+  reviewState,
+  streamEvent,
+} from "../index.ts";
 
 /**
  * These schemas are the web↔api boundary. A rule that lives only in a comment gets
@@ -82,28 +88,97 @@ describe("exportRequest", () => {
   });
 });
 
+describe("chatRequest", () => {
+  test("uses the field names the route actually declares", () => {
+    // The first version of this schema said `question` / `web` / `scope`. The route says
+    // `message` / `webSearch` / `kinds`, and a contract that disagrees with the server is
+    // worse than no contract at all.
+    expect(chatRequest.safeParse({ message: "ອາກອນມູນຄ່າເພີ່ມແມ່ນຫຍັງ?" }).success).toBe(true);
+    expect(chatRequest.safeParse({ question: "ອາກອນ" }).success).toBe(false);
+  });
+
+  test("accepts every optional the route accepts", () => {
+    const full = {
+      message: "ຄຳຖາມ",
+      conversationId: "c1",
+      collections: ["tax"],
+      kinds: ["vat"],
+      webSearch: true,
+      k: 8,
+      model: "qwen3:8b",
+    };
+    expect(chatRequest.safeParse(full).success).toBe(true);
+  });
+
+  test("holds k inside the range the route enforces", () => {
+    expect(chatRequest.safeParse({ message: "x", k: 20 }).success).toBe(true);
+    expect(chatRequest.safeParse({ message: "x", k: 21 }).success).toBe(false);
+    expect(chatRequest.safeParse({ message: "x", k: 0 }).success).toBe(false);
+  });
+});
+
 describe("streamEvent", () => {
-  test("accepts each event the server emits", () => {
-    const events: unknown[] = [
-      { type: "phase", phase: "searching" },
-      { type: "phase", phase: "reading", sources: 4 },
-      { type: "sources", sources: [] },
-      { type: "token", text: "ບັນ" },
-      { type: "conversation", id: "abc" },
-      { type: "done" },
-      { type: "error", message: "ollama unreachable" },
+  const source = {
+    n: 1,
+    id: "chunk-1",
+    content: "ເນື້ອໃນ",
+    headingPath: ["ບົດທີ 1"],
+    kind: "prose",
+    title: "ກົດໝາຍອາກອນ",
+    authority: "ກະຊວງການເງິນ",
+    effectiveDate: "2026-01-01",
+    superseded: null,
+    origin: "dataset",
+    url: null,
+  };
+
+  test("accepts each frame the server actually emits", () => {
+    const frames: unknown[] = [
+      { type: "created", conversationId: "c1", userMessageId: "m1" },
+      { type: "citations", sources: [source], glossaryMatches: [], retrievalQuery: "ອາກອນ" },
+      { type: "token", t: "ບັນ" },
+      { type: "done", conversationId: "c1", assistantMessageId: "m2" },
+      { type: "error", error: "ollama unreachable" },
     ];
-    for (const e of events) {
-      expect(streamEvent.safeParse(e).success).toBe(true);
+    for (const f of frames) {
+      const r = streamEvent.safeParse(f);
+      expect(`${(f as { type: string }).type}: ${r.success}`).toBe(
+        `${(f as { type: string }).type}: true`,
+      );
     }
   });
 
-  test("rejects an unknown event type", () => {
-    expect(streamEvent.safeParse({ type: "thinking" }).success).toBe(false);
+  test("rejects a frame type the server never sends", () => {
+    // "phase" was invented by the first draft of this schema. The three-step progress
+    // indicator is derived client-side from the order of real frames.
+    expect(streamEvent.safeParse({ type: "phase", phase: "searching" }).success).toBe(false);
   });
 
-  test("rejects a known phase name in the wrong slot", () => {
-    expect(streamEvent.safeParse({ type: "phase", phase: "finished" }).success).toBe(false);
+  test("keeps the superseded warning on a citation", () => {
+    // Dropping this field is how a repealed VAT rate gets cited as current.
+    const superseded = {
+      ...source,
+      superseded: { title: "ສະບັບເກົ່າ", effectiveDate: "2020-01-01" },
+    };
+    const r = streamEvent.safeParse({
+      type: "citations",
+      sources: [superseded],
+      glossaryMatches: [],
+      retrievalQuery: "q",
+    });
+    expect(r.success).toBe(true);
+  });
+
+  test("requires a citation to declare its origin", () => {
+    // dataset / web / erp decides whether a source is exportable at all.
+    const { origin: _dropped, ...withoutOrigin } = source;
+    const r = streamEvent.safeParse({
+      type: "citations",
+      sources: [withoutOrigin],
+      glossaryMatches: [],
+      retrievalQuery: "q",
+    });
+    expect(r.success).toBe(false);
   });
 });
 

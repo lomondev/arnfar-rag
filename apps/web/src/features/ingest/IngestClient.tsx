@@ -27,8 +27,9 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useCollections } from "@/features/studio/useCollections";
+import { apiBaseUrl } from "@/lib/api";
 
-const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
+const BASE = apiBaseUrl();
 
 /* ── API shapes (mirror rag-api) ────────────────────────────────────────── */
 

@@ -1,8 +1,7 @@
 import { buttonVariants } from "@arnfar/ui/components/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@arnfar/ui/components/card";
 import Link from "next/link";
-
-const RAG_API_URL = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
+import { apiBaseUrlLabel } from "@/lib/api";
 
 export default function Home() {
   return (
@@ -54,7 +53,7 @@ export default function Home() {
               answers (SEA-LION), cite-or-abstain
             </li>
             <li>
-              API: <code className="glass-field rounded-md px-1.5 py-0.5">{RAG_API_URL}</code>{" "}
+              API: <code className="glass-field rounded-md px-1.5 py-0.5">{apiBaseUrlLabel()}</code>{" "}
               <span className="text-muted-foreground">(browser talks only to rag-api)</span>
             </li>
           </ul>

@@ -19,6 +19,7 @@ import { reviewRoutes } from "./features/review/routes.ts";
 import { searchRoutes } from "./features/search/routes.ts";
 import { toolsRoutes } from "./features/tools/routes.ts";
 import { websearchRoutes } from "./features/websearch/routes.ts";
+import { corsOrigin } from "./lib/cors.ts";
 import { closeDb } from "./lib/db.ts";
 import { env } from "./lib/env.ts";
 import { newId } from "./lib/ids.ts";
@@ -34,9 +35,11 @@ export const app = new Elysia()
   .use(
     cors({
       // An allowlist, not `*`. rag-api holds client accounting data and answers with no
-      // credentials of its own, so any origin that can reach it can read that data —
-      // "it only listens on localhost" stops being true the moment someone binds 0.0.0.0.
-      origin: env.corsOrigins,
+      // credentials of its own, so any origin that can reach it can read that data.
+      // See lib/cors.ts — the predicate also accepts private-network origins when
+      // CORS_ALLOW_PRIVATE_NETWORK is on, which is what makes the Studio usable from a
+      // phone without pinning a DHCP address in the allowlist.
+      origin: corsOrigin,
       methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
       credentials: true,
     }),
@@ -79,7 +82,7 @@ export const app = new Elysia()
   .use(laoRoutes)
   // idleTimeout 255s (Bun max): SSE chat streams idle between the citations frame and
   // the LLM's first token (prompt eval) — the 10s default would kill the stream.
-  .listen({ port: env.port, idleTimeout: 255 });
+  .listen({ hostname: env.host, port: env.port, idleTimeout: 255 });
 
 // Start the background ingestion worker (SKIP LOCKED job queue — decision B).
 startWorker();
@@ -90,10 +93,23 @@ startWorker();
 void assertTenantIsolation();
 
 log.info("listening", {
-  url: `http://localhost:${app.server?.port ?? env.port}`,
+  url: `http://${env.host}:${app.server?.port ?? env.port}`,
   version: SERVICE_VERSION,
   corsOrigins: env.corsOrigins.join(","),
+  corsAllowPrivateNetwork: env.corsAllowPrivateNetwork,
 });
+
+// Bound to something other than loopback means every machine that can route to this port
+// can read every ledger this service serves — there is no authentication layer yet. That
+// is a legitimate choice on a trusted office network and a serious one anywhere else, so
+// it is stated on every boot rather than left to be discovered.
+if (env.host !== "127.0.0.1" && env.host !== "localhost" && env.host !== "::1") {
+  log.warn("reachable beyond this machine and the API has NO authentication", {
+    host: env.host,
+    port: env.port,
+    advice: "trusted networks only — do not port-forward or expose to the internet",
+  });
+}
 
 /**
  * Graceful shutdown.

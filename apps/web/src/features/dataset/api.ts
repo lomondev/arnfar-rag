@@ -13,8 +13,9 @@ import {
   term,
 } from "@arnfar/contracts";
 import { z } from "zod";
+import { apiBaseUrl } from "@/lib/api";
 
-const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
+const BASE = apiBaseUrl();
 
 /**
  * Reads are parsed against the shared contracts, not cast to them.

@@ -1,3 +1,4 @@
+import type { StreamEvent as ContractStreamEvent } from "@arnfar/contracts";
 import type { TenantContext } from "@arnfar/db";
 import { schema } from "@arnfar/db";
 import { and, eq } from "drizzle-orm";
@@ -51,6 +52,20 @@ export type ChatEvent =
   | { type: "token"; t: string }
   | { type: "done"; conversationId: string; assistantMessageId: string }
   | { type: "error"; error: string };
+
+/**
+ * The event union above and `streamEvent` in @arnfar/contracts describe the same wire
+ * frames, and the browser decodes them with the contract. These two assignments fail to
+ * compile the moment the shapes diverge — which is the check this boundary lacked when the
+ * contract was first written against an imagined event list rather than this one.
+ *
+ * Bidirectional on purpose: one direction alone would let either side gain a field
+ * silently.
+ */
+type _EventMatchesContract = ChatEvent extends ContractStreamEvent ? true : never;
+type _ContractMatchesEvent = ContractStreamEvent extends ChatEvent ? true : never;
+const _eventContractCheck: [_EventMatchesContract, _ContractMatchesEvent] = [true, true];
+void _eventContractCheck;
 
 async function glossaryForPrompt(tenant: TenantContext) {
   const rows = await db()

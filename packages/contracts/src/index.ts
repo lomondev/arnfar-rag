@@ -10,7 +10,6 @@ export type {
   SourceOrigin,
   StoredSource,
   StreamEvent,
-  StreamPhase,
 } from "./chat.ts";
 export {
   apiConversationDetail,
@@ -22,7 +21,6 @@ export {
   sourceOrigin,
   storedSource,
   streamEvent,
-  streamPhase,
 } from "./chat.ts";
 export type {
   Chunk,

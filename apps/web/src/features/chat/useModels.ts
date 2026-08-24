@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiBaseUrl } from "@/lib/api";
 
-const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
+const BASE = apiBaseUrl();
 
 export interface ModelList {
   /** The server's configured default generator — selected until the user picks another. */

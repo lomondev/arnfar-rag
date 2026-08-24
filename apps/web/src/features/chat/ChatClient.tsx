@@ -1,5 +1,6 @@
 "use client";
 
+import type { ChatRequest, StreamEvent as ContractStreamEvent } from "@arnfar/contracts";
 import { Button } from "@arnfar/ui/components/button";
 import { Input } from "@arnfar/ui/components/input";
 import { Select } from "@arnfar/ui/components/select";
@@ -25,6 +26,7 @@ import {
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useKnowledgeKinds } from "@/features/studio/useCollections";
+import { apiBaseUrl } from "@/lib/api";
 import {
   type ConversationSummary,
   deleteConversation as deleteConversationApi,
@@ -43,7 +45,7 @@ import {
 } from "./storage";
 import { shortModel, useModels } from "./useModels";
 
-const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
+const BASE = apiBaseUrl();
 
 /**
  * Chrome only. The language toggle never touches message content — Lao answers stay Lao
@@ -97,14 +99,12 @@ type Theme = "light" | "dark";
 type StreamPhase = "searching" | "reading" | "writing";
 const PHASE_ORDER: readonly StreamPhase[] = ["searching", "reading", "writing"];
 
-/** One SSE frame from `POST /chat/stream`. */
-interface StreamEvent {
-  readonly type: string;
-  readonly t?: string;
-  readonly error?: string;
-  readonly sources?: readonly StoredSource[];
-  readonly conversationId?: string;
-}
+/**
+ * One SSE frame from `POST /chat/stream`, typed by the shared contract rather than
+ * re-described here. The previous local copy widened `type` to `string`, so a frame the
+ * server stopped sending — or started sending — read the same to the compiler.
+ */
+type StreamEvent = ContractStreamEvent;
 
 /** How often buffered stream tokens are flushed into React state. SEA-LION emits
  *  CHARACTER-level tokens for Lao; a setState per character re-renders the whole
@@ -324,7 +324,7 @@ export function ChatClient() {
           ...(scope.startsWith("kind:") ? { kinds: [scope.slice(5)] } : {}),
           ...(webOn ? { webSearch: true } : {}),
           ...(model ? { model } : {}),
-        }),
+        } satisfies ChatRequest),
         signal: ctrl.signal,
       });
       if (!res.ok || !res.body) throw new Error(`rag-api responded ${res.status}`);

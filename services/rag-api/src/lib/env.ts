@@ -15,12 +15,35 @@ function originList(raw: string | undefined, fallback: readonly string[]): strin
 
 export const env = {
   port: Number(process.env.RAG_API_PORT ?? 7730),
+  /**
+   * Network interface to bind.
+   *
+   * Loopback by default: this API has no authentication layer, so anything that can reach
+   * the port can read every ledger it serves. Bun's own default is 0.0.0.0, which meant
+   * the service was reachable from the whole local network without anyone choosing that.
+   * Set RAG_API_HOST=0.0.0.0 to serve other machines — deliberately, and having read the
+   * "Serving the site over your network" section of the README.
+   */
+  host: process.env.RAG_API_HOST ?? "127.0.0.1",
   databaseUrl: req("DATABASE_URL"),
 
   // Browser origins allowed to call this API. Defaults to the local web app only —
   // `cors()` with no argument allows every origin, which for a service holding client
   // accounting data means any page the user visits can read it.
   corsOrigins: originList(process.env.CORS_ORIGINS, ["http://localhost:3000"]),
+  /**
+   * Also accept browser origins on private (RFC1918) addresses.
+   *
+   * Serving the Studio over a LAN means the origin is whatever address the visitor typed,
+   * and on DHCP that changes — pinning it in CORS_ORIGINS breaks on the next lease. This
+   * accepts any private-range origin on the web port instead, which is bounded in a way
+   * `*` is not: a public site cannot match it.
+   *
+   * It is a convenience for browsers, NOT a security control. CORS is enforced by the
+   * browser and does nothing about curl, so an exposed port is exposed regardless.
+   */
+  corsAllowPrivateNetwork:
+    (process.env.CORS_ALLOW_PRIVATE_NETWORK ?? "false").toLowerCase() === "true",
 
   ollamaBaseUrl: process.env.OLLAMA_BASE_URL ?? "http://localhost:11434",
   embedModel: process.env.OLLAMA_EMBED_MODEL ?? "bge-m3",
