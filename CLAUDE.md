@@ -31,10 +31,21 @@ Full spec: [`PROMPT.md`](./PROMPT.md). Build proceeds in **approval-gated phases
   the literal.
 
 **Multi-tenancy**
-- Hierarchy `hf_id → company_id → branch_id`, enforced **at the query level on every table**.
+- Hierarchy `hf_id → company_id → branch_id`, enforced **by Postgres row-level security**, not
+  by convention. Migration `0003_tenant_rls` puts a `tenant_isolation` policy plus
+  `FORCE ROW LEVEL SECURITY` on every tenant-scoped table.
 - Every RAG table carries `hf_id` and `company_id` **denormalized** (tenant filter with no join).
-- No query touches a tenant-scoped table without `hf_id = $x AND company_id = $y` in its `WHERE`.
-  No exceptions, no "add it later".
+- `createDb()` binds the tenant to every connection as the `arnfar.hf_id` / `arnfar.company_id`
+  session GUCs. Keep writing the explicit `hf_id = $x AND company_id = $y` predicates — they
+  keep intent visible and let the planner use the tenant indexes — but they are no longer what
+  makes isolation true. A query that forgets one now returns the current tenant's rows; a
+  connection with no tenant returns nothing.
+- **The app must connect as a non-superuser role.** Postgres exempts `SUPERUSER` and
+  `BYPASSRLS` from row security unconditionally, so every policy is inert otherwise. Create it
+  with `bun run db:app-role`. rag-api warns at startup and refuses to run in production when its
+  own connection can bypass RLS.
+- Regression guard: `packages/db/src/__tests__/rls.test.ts` seeds a second tenant and asserts
+  it is invisible, unwritable, and unstealable from the first.
 
 **Lao language**
 - **Phetsarath OT** for all Lao rendering — UI and exports. Self-hosted, subset, `font-display: swap`.
@@ -108,17 +119,30 @@ docker compose logs -f lao-nlp
 
 # workspace
 bun install
-bun run typecheck                  # bun run --filter '*' typecheck  (strict tsc across all packages)
+bun run check                      # everything CI runs: lint + typecheck + test + templates
+bun run lint                       # biome (TS/JSON/CSS) + ruff check/format (Python)
+bun run lint:fix
+bun run typecheck                  # strict tsc across all packages + mypy on both sidecars
+bun run test                       # bun test + pytest (per sidecar)
 bun run --filter '@arnfar/db' typecheck   # single package
+
+# python tooling lives in .venv-tools/ — never the system interpreter
+./scripts/py.sh ruff check .
+./scripts/py.sh --refresh pytest   # --refresh after editing requirements-dev.txt
 
 # database (packages/db — Drizzle)
 bun run db:generate                # drizzle-kit generate (SQL migration from schema)
 bun run db:migrate                 # apply migrations
 bun run db:index:hnsw              # build the HNSW index AFTER a bulk embed load (see decision 3)
+bun run db:app-role                # create/refresh the unprivileged role the app connects as.
+                                   # REQUIRED: RLS is inert while the app is a superuser.
 
 # run services on the host
 bun run dev:api                    # rag-api  :7730
 bun run dev:web                    # web      :3000
+
+# or the whole stack in containers (Ollama still on the host)
+docker compose --profile app up -d --build
 
 # ollama models (host) — verify before trusting
 ollama pull bge-m3                 # embeddings, 1024-dim, multilingual. Required for Lao.
@@ -159,8 +183,13 @@ services/rag-api (Bun + Elysia, host :7730)
   embeddings) + lexical (FTS over `content_seg`) fused with **RRF (k=60, do not tune before the
   eval set exists)**.
 - **`packages/db`** — Drizzle schema + migrations, the single source of truth for DB shape
-  (except the HNSW index, decision 3). Also the tenant-scoped query helpers.
-- **`packages/contracts`** — zod schemas shared web ↔ api. Validate at every boundary.
+  (except the HNSW index, decision 3). Also the tenant binding (`createDb`), the RLS
+  self-check (`checkTenantBinding`), and the `db:app-role` management command.
+- **`packages/contracts`** — zod schemas shared web ↔ api, and genuinely load-bearing on both
+  sides: rag-api pins its handler return types to them (drift is a compile error there), and the
+  web *parses* responses with them via `parseResponse()` rather than casting (drift is a named
+  runtime error at the fetch boundary, not a blank table). Elysia 1.2 predates Standard Schema,
+  so HTTP-level request validation at the edge stays TypeBox — the domain shapes live here.
 - **`packages/ui`** — shared components + Phetsarath OT font wiring.
 - **`services/lao-nlp` / `services/docx-extractor`** — pure Python sidecars. Stateless. No DB.
 
@@ -212,6 +241,32 @@ approval before starting the next phase.** Do not proceed on your own initiative
 **No placeholder code.** No `// ... rest of implementation`. Every file written is complete and
 runnable. A scaffold package may be intentionally minimal, but it must typecheck and run.
 
+**`bun run check` must pass before any gate is claimed.** It is exactly what CI runs:
+
+| Step | Covers |
+|---|---|
+| `bun run lint` | Biome (TS/JSON/CSS) + Ruff check and format (Python) |
+| `bun run typecheck` | `tsc --strict` across 5 packages + `mypy --strict` on both sidecars |
+| `bun run test` | `bun test` + `pytest`, per sidecar |
+| `bun run check:templates` | no half-filled authored document can be ingested |
+
+Rules for this suite:
+- **The invariants CLAUDE.md calls non-negotiable have tests.** Tenant isolation
+  (`packages/db/src/__tests__/rls.test.ts`) and the export rules
+  (`services/rag-api/src/features/export/__tests__/invariants.test.ts`) are database-backed and
+  skip only when no `DATABASE_URL` is set. CI always sets one — do not let the skip become
+  permanent, and do not add a new invariant without a test that would fail without it.
+- **Disabling a lint rule requires a reason in `biome.jsonc` or an inline
+  `// biome-ignore … : why`.** Several rules are off on purpose (Tailwind v4 at-rules, `!` under
+  `noUncheckedIndexedAccess`); each says why. A silent disable is not acceptable.
+- Python tooling lives in `.venv-tools/` via `scripts/py.sh` — never install into the system
+  interpreter, and never add `--break-system-packages`.
+
 Gate ledger:
-- **GATE 0 (Phase 0, scaffold):** `docker compose up` green; `bun run typecheck` passes. ← current
-- GATE 1 → 8: see `PROMPT.md` §6.
+- **GATE 0–5: passed.** Scaffold, schema, ingest + review, hybrid retrieval, chat with
+  citations, versioned export, eval harness, and the live-ERP read-only tools are all shipped.
+- **GATE 6 (retrieval quality) ← current.** recall@5 ≥ 0.9 and faithfulness ≥ 0.8 measured on
+  real data via `/studio/eval`, judged cross-family (`qwen3:8b` judging the Gemma-based
+  generator). Never tune on `qa_test`. The blocker is dataset volume, not platform capability —
+  see `docs/ROADMAP.md`, which is the plan of record for reaching it.
+- GATE 7 → 8: see `PROMPT.md` §6.
