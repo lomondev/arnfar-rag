@@ -5,41 +5,62 @@ import { accountsRoutes } from "./features/accounts/routes.ts";
 import { agentRoutes } from "./features/agent/routes.ts";
 import { chatRoutes } from "./features/chat/routes.ts";
 import { dashboardRoutes } from "./features/dashboard/routes.ts";
-import { knowledgeRoutes } from "./features/knowledge/routes.ts";
-import { websearchRoutes } from "./features/websearch/routes.ts";
 import { erpRoutes } from "./features/erp/routes.ts";
 import { evalRoutes } from "./features/eval/routes.ts";
 import { exportRoutes } from "./features/export/routes.ts";
 import { glossaryRoutes } from "./features/glossary/routes.ts";
+import { healthRoutes } from "./features/health/routes.ts";
 import { ingestRoutes } from "./features/ingest/routes.ts";
+import { startWorker, stopWorker } from "./features/ingest/worker.ts";
+import { knowledgeRoutes } from "./features/knowledge/routes.ts";
 import { laoRoutes } from "./features/lao/routes.ts";
-import { startWorker } from "./features/ingest/worker.ts";
 import { qaRoutes } from "./features/qa/routes.ts";
 import { reviewRoutes } from "./features/review/routes.ts";
 import { searchRoutes } from "./features/search/routes.ts";
 import { toolsRoutes } from "./features/tools/routes.ts";
+import { websearchRoutes } from "./features/websearch/routes.ts";
+import { closeDb } from "./lib/db.ts";
 import { env } from "./lib/env.ts";
+import { newId } from "./lib/ids.ts";
+import { log } from "./lib/logger.ts";
+import { assertTenantIsolation } from "./lib/tenant-guard.ts";
+import { SERVICE_VERSION } from "./lib/version.ts";
 
 /**
  * arnfar-rag-api — the only service that touches Ollama, the Python sidecars, and
  * Postgres. Next.js talks ONLY to this (CLAUDE.md boundary rule).
  */
 export const app = new Elysia()
-  .use(cors()) // browser (web:3000) → rag-api (7730); Next never calls sidecars/Ollama
-  .onError(({ error, code, set }) => {
+  .use(
+    cors({
+      // An allowlist, not `*`. rag-api holds client accounting data and answers with no
+      // credentials of its own, so any origin that can reach it can read that data —
+      // "it only listens on localhost" stops being true the moment someone binds 0.0.0.0.
+      origin: env.corsOrigins,
+      methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+      credentials: true,
+    }),
+  )
+  .onError(({ error, code, set, path, request }) => {
     if (code === "NOT_FOUND") {
       set.status = 404;
       return { error: "not found" };
     }
     if (code === "VALIDATION") {
+      // Validation messages describe the request the caller sent, so echoing them back
+      // helps rather than leaks.
       set.status = 422;
       return { error: "validation", message: error.message };
     }
-    console.error("[rag-api]", error);
+    // Everything else: the detail goes to the log, the caller gets a correlation id.
+    // The previous handler returned error.message verbatim, which handed Postgres and
+    // Ollama internals — table names, connection strings, prompts — to the browser.
+    const errorId = newId();
+    log.error("unhandled request error", error, { errorId, path, method: request.method });
     set.status = 500;
-    return { error: error instanceof Error ? error.message : "internal error" };
+    return { error: "internal error", errorId };
   })
-  .get("/health", () => ({ status: "ok", service: "arnfar-rag-api", version: "0.3.0" }))
+  .use(healthRoutes)
   .use(ingestRoutes)
   .use(reviewRoutes)
   .use(searchRoutes)
@@ -63,4 +84,61 @@ export const app = new Elysia()
 // Start the background ingestion worker (SKIP LOCKED job queue — decision B).
 startWorker();
 
-console.log(`arnfar-rag-api listening on http://localhost:${app.server?.port ?? env.port}`);
+// Report — loudly — if this process is connected in a way that defeats the tenant
+// policies. Deliberately not awaited before listen(): a database that is still starting
+// should delay readiness, not refuse to boot. /ready covers that case.
+void assertTenantIsolation();
+
+log.info("listening", {
+  url: `http://localhost:${app.server?.port ?? env.port}`,
+  version: SERVICE_VERSION,
+  corsOrigins: env.corsOrigins.join(","),
+});
+
+/**
+ * Graceful shutdown.
+ *
+ * Without this, a restart kills the worker mid-job and drops the connection pool without
+ * draining: the SKIP LOCKED queue recovers the row on the next boot, but the embedding
+ * batch already paid for is thrown away, and any in-flight SSE stream dies unflushed.
+ *
+ * Order matters — stop accepting work, let the current job finish, then close the pool.
+ * A second signal skips the wait, because a shutdown you cannot interrupt is its own bug.
+ */
+let shuttingDown = false;
+
+async function shutdown(signal: string): Promise<void> {
+  if (shuttingDown) {
+    log.warn("second signal — exiting immediately", { signal });
+    process.exit(1);
+  }
+  shuttingDown = true;
+  log.info("shutting down", { signal });
+
+  try {
+    await app.stop();
+    await stopWorker();
+    await closeDb();
+    log.info("shutdown complete");
+    process.exit(0);
+  } catch (err) {
+    log.error("shutdown failed", err);
+    process.exit(1);
+  }
+}
+
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.on(signal, () => {
+    void shutdown(signal);
+  });
+}
+
+process.on("unhandledRejection", (reason) => {
+  // Never silently swallow: an unhandled rejection here is a bug with no other symptom.
+  log.error("unhandled rejection", reason, { fatal: false });
+});
+
+process.on("uncaughtException", (err) => {
+  log.error("uncaught exception — shutting down", err, { fatal: true });
+  void shutdown("uncaughtException");
+});
