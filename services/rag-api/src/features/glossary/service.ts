@@ -1,3 +1,4 @@
+import type { Term } from "@arnfar/contracts";
 import type { TenantContext } from "@arnfar/db";
 import { schema } from "@arnfar/db";
 import { and, eq } from "drizzle-orm";
@@ -50,7 +51,9 @@ export async function mineAndDraft(
   return { candidates: candidates.length, created };
 }
 
-export async function listTerms(tenant: TenantContext, verified?: boolean) {
+/** Return type is pinned to the shared contract: if this projection stops matching
+ *  what the web parses, rag-api fails to compile rather than the UI failing at runtime. */
+export async function listTerms(tenant: TenantContext, verified?: boolean): Promise<Term[]> {
   const conds = [
     eq(schema.laoTerm.hfId, tenant.hfId),
     eq(schema.laoTerm.companyId, tenant.companyId),

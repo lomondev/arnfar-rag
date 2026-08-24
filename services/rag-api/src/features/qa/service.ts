@@ -1,3 +1,4 @@
+import type { QaPair } from "@arnfar/contracts";
 import type { TenantContext } from "@arnfar/db";
 import { schema } from "@arnfar/db";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -42,17 +43,19 @@ export async function createDraftFromChunk(tenant: TenantContext, chunkId: strin
     .limit(1);
   const drafted = await draftQaFromChunk(full!.content);
   const id = newId();
-  await db().insert(schema.laoQaPair).values({
-    id,
-    hfId: tenant.hfId,
-    companyId: tenant.companyId,
-    collection: chunk!.collection,
-    questionLo: drafted.question_lo,
-    answerLo: drafted.answer_lo,
-    citationIds: [chunkId],
-    source: "llm_draft",
-    verified: false,
-  });
+  await db()
+    .insert(schema.laoQaPair)
+    .values({
+      id,
+      hfId: tenant.hfId,
+      companyId: tenant.companyId,
+      collection: chunk!.collection,
+      questionLo: drafted.question_lo,
+      answerLo: drafted.answer_lo,
+      citationIds: [chunkId],
+      source: "llm_draft",
+      verified: false,
+    });
   return { id, ...drafted, source: "llm_draft", verified: false, citationIds: [chunkId] };
 }
 
@@ -70,21 +73,23 @@ export interface HumanQaInput {
 export async function createQa(tenant: TenantContext, input: HumanQaInput) {
   const chunks = await validateCitations(tenant, input.citationIds);
   const id = newId();
-  await db().insert(schema.laoQaPair).values({
-    id,
-    hfId: tenant.hfId,
-    companyId: tenant.companyId,
-    collection: chunks[0]!.collection,
-    questionLo: input.questionLo,
-    answerLo: input.answerLo,
-    questionEn: input.questionEn ?? null,
-    answerEn: input.answerEn ?? null,
-    citationIds: input.citationIds,
-    tags: input.tags ?? [],
-    difficulty: input.difficulty ?? 2,
-    source: input.source ?? "human",
-    verified: false,
-  });
+  await db()
+    .insert(schema.laoQaPair)
+    .values({
+      id,
+      hfId: tenant.hfId,
+      companyId: tenant.companyId,
+      collection: chunks[0]!.collection,
+      questionLo: input.questionLo,
+      answerLo: input.answerLo,
+      questionEn: input.questionEn ?? null,
+      answerEn: input.answerEn ?? null,
+      citationIds: input.citationIds,
+      tags: input.tags ?? [],
+      difficulty: input.difficulty ?? 2,
+      source: input.source ?? "human",
+      verified: false,
+    });
   return { id };
 }
 
@@ -161,10 +166,12 @@ export async function verifyQa(tenant: TenantContext, id: string, verifiedBy: st
   return res[0] ?? null;
 }
 
+/** Return type is pinned to the shared contract: if this projection stops matching
+ *  what the web parses, rag-api fails to compile rather than the UI failing at runtime. */
 export async function listQa(
   tenant: TenantContext,
   filter: { verified?: boolean; split?: string } = {},
-) {
+): Promise<QaPair[]> {
   const conds = [
     eq(schema.laoQaPair.hfId, tenant.hfId),
     eq(schema.laoQaPair.companyId, tenant.companyId),
@@ -238,10 +245,7 @@ export async function qaStats(tenant: TenantContext) {
     })
     .from(schema.laoQaPair)
     .where(
-      and(
-        eq(schema.laoQaPair.hfId, tenant.hfId),
-        eq(schema.laoQaPair.companyId, tenant.companyId),
-      ),
+      and(eq(schema.laoQaPair.hfId, tenant.hfId), eq(schema.laoQaPair.companyId, tenant.companyId)),
     )
     .groupBy(schema.laoQaPair.verified, schema.laoQaPair.split, schema.laoQaPair.source);
   return rows;

@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import type { ExportResult, ManifestFile } from "@arnfar/contracts";
 
 import type { TenantContext } from "@arnfar/db";
 import { schema } from "@arnfar/db";
@@ -22,23 +23,15 @@ import { repoRoot } from "../../lib/paths.ts";
 
 const DATASET_ROOT = "datasets/lao-accounting";
 
-interface FileEntry {
-  name: string;
-  sha256: string;
-  bytes: number;
-  records: number;
-}
+/** The per-file manifest entry, defined once in @arnfar/contracts and consumed by the
+ *  Studio's export screen. MANIFEST.json is this array verbatim. */
+type FileEntry = ManifestFile;
 
 function jsonl(rows: unknown[]): string {
   return rows.map((r) => JSON.stringify(r)).join("\n") + (rows.length ? "\n" : "");
 }
 
-export interface ExportResult {
-  version: string;
-  dir: string;
-  files: FileEntry[];
-  warnings: string[];
-}
+export type { ExportResult };
 
 export async function exportDataset(
   tenant: TenantContext,
@@ -143,10 +136,7 @@ export async function exportDataset(
   const evalSet: unknown[] = [];
   let droppedQa = 0;
   for (const q of qaRows) {
-    if (
-      q.citationIds.length === 0 ||
-      !q.citationIds.every((id) => allowedChunkIds.has(id))
-    ) {
+    if (q.citationIds.length === 0 || !q.citationIds.every((id) => allowedChunkIds.has(id))) {
       droppedQa++;
       continue; // uncited or cites a rejected/confidential chunk → never exports
     }
@@ -172,7 +162,8 @@ export async function exportDataset(
       });
     }
   }
-  if (droppedQa) warnings.push(`${droppedQa} verified QA pair(s) dropped (citation invalid/excluded)`);
+  if (droppedQa)
+    warnings.push(`${droppedQa} verified QA pair(s) dropped (citation invalid/excluded)`);
 
   // ── write files + hash each ─────────────────────────────────────────────────
   await mkdir(dir, { recursive: true });
@@ -214,8 +205,8 @@ export async function exportDataset(
         eq(schema.ragDocument.companyId, tenant.companyId),
       ),
     );
-  const includedDocs = sourceDocs.filter(
-    (d) => shareable ? d.license !== "client-confidential" : true,
+  const includedDocs = sourceDocs.filter((d) =>
+    shareable ? d.license !== "client-confidential" : true,
   );
 
   const createdAt = new Date().toISOString();
@@ -241,7 +232,11 @@ export async function exportDataset(
   await writeFile(resolve(dir, "MANIFEST.json"), manifestBody, "utf8");
 
   await writeFile(resolve(dir, "LICENSE.md"), licenseMd(includedDocs), "utf8");
-  await writeFile(resolve(dir, "DATA_CARD.md"), dataCardMd(version, createdAt, manifest, includedDocs), "utf8");
+  await writeFile(
+    resolve(dir, "DATA_CARD.md"),
+    dataCardMd(version, createdAt, manifest, includedDocs),
+    "utf8",
+  );
 
   return { version, dir, files, warnings };
 }

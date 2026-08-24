@@ -1,3 +1,4 @@
+import type { Account } from "@arnfar/contracts";
 import type { TenantContext } from "@arnfar/db";
 import { schema } from "@arnfar/db";
 import { and, eq } from "drizzle-orm";
@@ -18,7 +19,9 @@ export interface AccountInput {
   statement: "BS" | "PL" | "CF" | "NONE";
 }
 
-export async function listAccounts(tenant: TenantContext, verified?: boolean) {
+/** Return type is pinned to the shared contract: if this projection stops matching
+ *  what the web parses, rag-api fails to compile rather than the UI failing at runtime. */
+export async function listAccounts(tenant: TenantContext, verified?: boolean): Promise<Account[]> {
   const conds = [
     eq(schema.laoAccount.hfId, tenant.hfId),
     eq(schema.laoAccount.companyId, tenant.companyId),

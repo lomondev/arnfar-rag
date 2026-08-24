@@ -6,22 +6,17 @@
  * where the data lives.
  */
 
-export interface StoredSource {
-  readonly n: number;
-  readonly id: string;
-  readonly content: string;
-  readonly headingPath: readonly string[];
-  readonly kind: string;
-  readonly title: string;
-  readonly authority: string | null;
-  readonly effectiveDate: string | null;
-  /** Dataset chunks omit these; "web" = internet page, "erp" = live ERP figure. */
-  readonly origin?: "dataset" | "web" | "erp";
-  readonly url?: string | null;
-}
+import type { MessageRole, StoredSource } from "@arnfar/contracts";
+
+/**
+ * StoredSource is the wire shape and lives in @arnfar/contracts — the citation panel
+ * renders exactly what the API sent, including the origin distinction that decides
+ * whether a source is exportable. Re-exported so /chat imports stay local.
+ */
+export type { StoredSource };
 
 export interface StoredMessage {
-  readonly role: "user" | "assistant";
+  readonly role: MessageRole;
   readonly content: string;
   readonly sources?: readonly StoredSource[];
   /** For an assistant turn: the question it answered. Needed to promote it to the dataset. */

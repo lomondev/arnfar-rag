@@ -1,7 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "types": [],
+    // "bun" for the test files' `bun:test` import. The runtime schemas themselves stay
+    // environment-agnostic — they are consumed by Next.js in the browser too.
+    "types": ["bun"],
     "rootDir": "src"
   },
   "include": ["src/**/*.ts"]

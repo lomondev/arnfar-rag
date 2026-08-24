@@ -4,9 +4,23 @@
  * rag_message) and are fetched from rag-api.
  */
 
-import type { Conversation, StoredSource } from "./storage";
+import {
+  type ApiConversationDetail,
+  apiConversationDetail,
+  apiConversationSummary,
+  parseResponse,
+} from "@arnfar/contracts";
+import { z } from "zod";
+
+import type { Conversation } from "./storage";
 
 const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
+
+/**
+ * The wire shapes (ISO timestamps, nullable sources) live in @arnfar/contracts and are
+ * parsed, not cast — a renamed field on the API side surfaces here as a named error
+ * instead of a conversation list that silently renders "Invalid Date".
+ */
 
 /** List-view summary of a conversation (no messages), with epoch-ms timestamps for the UI. */
 export interface ConversationSummary {
@@ -16,36 +30,6 @@ export interface ConversationSummary {
   readonly collection: string | null;
   readonly createdAt: number;
   readonly updatedAt: number;
-}
-
-/** Raw API shape — timestamps are ISO strings. */
-interface ApiConversationSummary {
-  readonly id: string;
-  readonly title: string;
-  readonly lang: string;
-  readonly collection: string | null;
-  readonly createdAt: string;
-  readonly updatedAt: string;
-}
-
-interface ApiConversationDetail {
-  readonly id: string;
-  readonly title: string;
-  readonly lang: string;
-  readonly collection: string | null;
-  readonly createdAt: string;
-  readonly updatedAt: string;
-  readonly messages: readonly ApiMessage[];
-}
-
-interface ApiMessage {
-  readonly id: string;
-  readonly conversationId: string;
-  readonly role: "user" | "assistant";
-  readonly content: string;
-  readonly sources: readonly StoredSource[] | null;
-  readonly meta: Record<string, unknown>;
-  readonly createdAt: string;
 }
 
 const toEpoch = (iso: string): number => new Date(iso).getTime();
@@ -65,29 +49,47 @@ function toConversation(d: ApiConversationDetail): Conversation {
   };
 }
 
-async function getJson<T>(path: string): Promise<T> {
+async function getParsed<S extends z.ZodTypeAny>(path: string, schema: S): Promise<z.infer<S>> {
   const res = await fetch(`${BASE}${path}`);
   if (!res.ok) throw new Error(`rag-api ${path} → ${res.status}`);
-  return (await res.json()) as T;
+  return parseResponse(schema, await res.json(), `GET ${path}`);
 }
 
-async function postJson<T>(path: string, body?: unknown): Promise<T> {
+async function postParsed<S extends z.ZodTypeAny>(
+  path: string,
+  schema: S,
+  body?: unknown,
+): Promise<z.infer<S>> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) throw new Error(`rag-api ${path} → ${res.status}`);
-  return (await res.json()) as T;
+  return parseResponse(schema, await res.json(), `POST ${path}`);
+}
+
+/** Fire-and-forget POST: the caller only needs to know it succeeded. */
+async function post(path: string, body?: unknown): Promise<void> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error(`rag-api ${path} → ${res.status}`);
 }
 
 export async function listConversations(): Promise<ConversationSummary[]> {
-  const rows = await getJson<readonly ApiConversationSummary[]>("/chat/conversations");
-  return rows.map((r) => ({ ...r, createdAt: toEpoch(r.createdAt), updatedAt: toEpoch(r.updatedAt) }));
+  const rows = await getParsed("/chat/conversations", z.array(apiConversationSummary));
+  return rows.map((r) => ({
+    ...r,
+    createdAt: toEpoch(r.createdAt),
+    updatedAt: toEpoch(r.updatedAt),
+  }));
 }
 
 export async function getConversation(id: string): Promise<Conversation> {
-  const detail = await getJson<ApiConversationDetail>(`/chat/conversations/${id}`);
+  const detail = await getParsed(`/chat/conversations/${id}`, apiConversationDetail);
   return toConversation(detail);
 }
 
@@ -96,7 +98,7 @@ export async function createConversation(input: {
   lang?: string;
   collection?: string;
 }): Promise<ConversationSummary> {
-  const row = await postJson<ApiConversationSummary>("/chat/conversations", input);
+  const row = await postParsed("/chat/conversations", apiConversationSummary, input);
   return { ...row, createdAt: toEpoch(row.createdAt), updatedAt: toEpoch(row.updatedAt) };
 }
 
@@ -126,9 +128,9 @@ export async function promoteToDataset(input: {
   verify?: boolean;
   reviewer?: string;
 }): Promise<void> {
-  await postJson("/chat/promote", input);
+  await post("/chat/promote", input);
 }
 
 export async function reportWrong(chunkIds: readonly string[]): Promise<void> {
-  await postJson("/chat/report-wrong", { chunkIds });
+  await post("/chat/report-wrong", { chunkIds });
 }

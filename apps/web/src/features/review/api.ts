@@ -1,44 +1,47 @@
+import {
+  type Chunk,
+  chunk,
+  type DocItem,
+  docItem,
+  parseResponse,
+  type ReviewState,
+} from "@arnfar/contracts";
+import { z } from "zod";
+
 const BASE = process.env.NEXT_PUBLIC_RAG_API_URL ?? "http://localhost:7730";
 
-export interface DocItem {
-  id: string;
-  title: string;
-  collection: string;
-  status: string;
-  lang: string;
-  chunks: number;
-  pending: number;
-}
-
-export type ReviewState = "pending" | "accepted" | "edited" | "rejected";
-
-export interface Chunk {
-  id: string;
-  seq: number;
-  kind: "prose" | "table" | "account_row" | "list" | "journal_entry" | "formula";
-  content: string;
-  contentNorm: string;
-  contentSeg: string;
-  headingPath: string[];
-  tokenCount: number;
-  lang: string;
-  review: ReviewState;
-  embedded: boolean;
-  meta: Record<string, unknown>;
-}
-
+/**
+ * The review surface reads the pristine `content` column and writes edits back to it, so
+ * a silent shape change here would corrupt what a reviewer thinks they are approving.
+ * Responses are parsed against the shared contract rather than cast to it.
+ */
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
   return (await res.json()) as T;
 }
 
+async function read<S extends z.ZodTypeAny>(
+  res: Response,
+  schema: S,
+  endpoint: string,
+): Promise<z.infer<S>> {
+  if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
+  return parseResponse(schema, await res.json(), endpoint);
+}
+
 export function fetchDocuments(): Promise<DocItem[]> {
-  return fetch(`${BASE}/ingest/documents`).then((r) => json<DocItem[]>(r));
+  return fetch(`${BASE}/ingest/documents`).then((r) =>
+    read(r, z.array(docItem), "GET /ingest/documents"),
+  );
 }
 
 export function fetchChunks(docId: string): Promise<Chunk[]> {
-  return fetch(`${BASE}/review/documents/${docId}/chunks`).then((r) => json<Chunk[]>(r));
+  return fetch(`${BASE}/review/documents/${docId}/chunks`).then((r) =>
+    read(r, z.array(chunk), "GET /review/documents/:id/chunks"),
+  );
 }
+
+export type { Chunk, DocItem, ReviewState };
 
 export function patchChunk(
   id: string,
