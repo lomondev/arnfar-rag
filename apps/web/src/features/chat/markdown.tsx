@@ -15,10 +15,14 @@
  * Anything unrecognised falls through as literal text, never as an exception.
  */
 
+import { cn } from "@arnfar/ui/lib/utils";
 import { Check, Copy } from "lucide-react";
 import { type JSX, type ReactNode, useState } from "react";
 
-export type CiteHandler = (n: number) => void;
+/** Called with the number inside a citation marker, or null when the marker carries no
+ *  number at all (a bare `[n]`). Resolving that number to a source is the caller's job —
+ *  the renderer does not know what the answer retrieved. */
+export type CiteHandler = (n: number | null) => void;
 
 /**
  * One alternation, longest/most-specific first, so a citation inside bold still resolves and
@@ -26,10 +30,21 @@ export type CiteHandler = (n: number) => void;
  * `code` | `[text](url)` | **bold** | ~~strike~~ | *italic* | _italic_ | [n]
  */
 const INLINE =
-  /(`[^`\n]+`|\[[^\]\n]+\]\([^)\s]+\)|\*\*[^*\n]+\*\*|~~[^~\n]+~~|\*[^*\n]+\*|_[^_\n]+_|\[\d+\])/g;
+  /(`[^`\n]+`|\[[^\]\n]+\]\([^)\s]+\)|\*\*[^*\n]+\*\*|~~[^~\n]+~~|\*[^*\n]+\*|_[^_\n]+_|\[\d+\]|\[[nN]\]\d*)/g;
 
 const LINK = /^\[([^\]\n]+)\]\(([^)\s]+)\)$/;
 const CITE = /^\[(\d+)\]$/;
+
+/**
+ * The malformed citation the smaller Lao generators actually emit.
+ *
+ * The prompt asks for "a [n] citation"; gemma-3n-laos copies the `[n]` placeholder verbatim
+ * and puts the number it meant to cite *after* the bracket — `[n]411`, `[n]701`. Rendering
+ * those as literal text leaves the reader with a citation they cannot open, which is exactly
+ * the thing this product refuses to ship. They are chips like any other marker; the caller
+ * decides what the trailing number resolves to.
+ */
+const PLACEHOLDER_CITE = /^\[[nN]\](\d*)$/;
 
 function renderInline(text: string, onCite: CiteHandler, keyPrefix: string): ReactNode[] {
   return text.split(INLINE).map((part, i) => {
@@ -51,9 +66,10 @@ function renderInline(text: string, onCite: CiteHandler, keyPrefix: string): Rea
       );
     }
 
-    const cite = CITE.exec(part);
+    const cite = CITE.exec(part) ?? PLACEHOLDER_CITE.exec(part);
     if (cite) {
-      const n = Number(cite[1]);
+      const digits = cite[1] ?? "";
+      const n = digits === "" ? null : Number(digits);
       return (
         <button
           key={key}
@@ -62,7 +78,7 @@ function renderInline(text: string, onCite: CiteHandler, keyPrefix: string): Rea
           title="View source"
           className="mx-0.5 inline-flex h-[1.15em] min-w-[1.15em] translate-y-[-0.15em] items-center justify-center rounded-[0.3em] bg-citation/12 px-[0.3em] align-middle text-[0.72em] font-semibold text-citation transition-colors hover:bg-citation/25"
         >
-          {n}
+          {n ?? "?"}
         </button>
       );
     }
@@ -146,6 +162,63 @@ function tableCells(line: string): string[] {
 const isTableRow = (l: string): boolean => /\|/.test(l) && l.trim().startsWith("|");
 const isTableDivider = (l: string): boolean =>
   /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(l) && l.includes("-");
+
+type Align = "start" | "center" | "end";
+
+/** Column alignment from the divider row: `:---` start, `---:` end, `:---:` center. */
+function tableAligns(divider: string): (Align | null)[] {
+  return tableCells(divider).map((c) => {
+    const left = c.startsWith(":");
+    const right = c.endsWith(":");
+    if (left && right) return "center";
+    if (right) return "end";
+    if (left) return "start";
+    return null;
+  });
+}
+
+/**
+ * A cell that is a bare quantity — Western or Lao digits, with the separators an amount
+ * carries. Used to right-align and tabular-align numeric columns, which is what makes a
+ * column of LAK figures readable at a glance instead of a ragged edge.
+ */
+const NUMERIC_CELL = /^[+\-(]?[\d\u0ED0-\u0ED9][\d\u0ED0-\u0ED9,.\s'’]*[%)]?$/;
+const isNumericCell = (c: string): boolean => c !== "" && NUMERIC_CELL.test(c.trim());
+
+/** True when a column is entirely quantities, so it can be aligned as one. */
+function columnIsNumeric(rows: string[][], col: number): boolean {
+  const values = rows.map((r) => (r[col] ?? "").trim()).filter((c) => c !== "");
+  return values.length > 1 && values.every(isNumericCell);
+}
+
+/**
+ * Normalise a table body to the header's width.
+ *
+ * Ragged rows are common in generated and extracted tables. A short row used to silently
+ * shift every following cell left; a long one used to have its overflow dropped on the
+ * floor. Neither is acceptable for an accounting table — short rows are padded, and extra
+ * cells are appended to the last column rather than discarded.
+ */
+function squareRows(rows: string[][], width: number): string[][] {
+  return rows.map((row) => {
+    if (row.length === width) return row;
+    if (row.length < width) return [...row, ...new Array(width - row.length).fill("")];
+    const kept = row.slice(0, width - 1);
+    kept.push(row.slice(width - 1).join(" · "));
+    return kept;
+  });
+}
+
+/** Does this text contain a pipe table (a header row followed by a divider)? */
+export function hasPipeTable(text: string): boolean {
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length - 1; i++) {
+    const line = lines[i] ?? "";
+    if (!line.includes("|")) continue;
+    if (isTableDivider(lines[i + 1] ?? "") && line.trimEnd().endsWith("|")) return true;
+  }
+  return false;
+}
 const isHr = (l: string): boolean => /^\s*([-*_])(\s*\1){2,}\s*$/.test(l) && !l.includes("|");
 
 const LIST_ITEM = /^(\s*)([-*•]|\d+[.)])\s+(.*)$/;
@@ -297,41 +370,90 @@ export function renderMarkdown(text: string, onCite: CiteHandler): ReactNode {
         );
       }
       const header = tableCells(line.slice(headerPipeAt));
+      const declared = tableAligns(lines[i + 1] ?? "");
       i += 2;
-      const rows: string[][] = [];
+      const raw: string[][] = [];
       while (i < lines.length && isTableRow(lines[i] ?? "")) {
-        rows.push(tableCells(lines[i] ?? ""));
+        raw.push(tableCells(lines[i] ?? ""));
         i++;
       }
+      const rows = squareRows(raw, header.length);
+
+      // Explicit markdown alignment wins; otherwise a column of pure quantities is aligned
+      // to the end so the digits line up. Everything else reads from the start, which is
+      // also what keeps Lao text correct under the document's writing direction.
+      const aligns: Align[] = header.map((_, c) =>
+        (declared[c] ?? null) !== null
+          ? (declared[c] as Align)
+          : columnIsNumeric(rows, c)
+            ? "end"
+            : "start",
+      );
+      const numericCols = header.map(
+        (_, c) => (declared[c] ?? null) === null && columnIsNumeric(rows, c),
+      );
+
+      const alignClass = (a: Align): string =>
+        a === "end" ? "text-end" : a === "center" ? "text-center" : "text-start";
+
       blocks.push(
-        <div key={key} className="my-3 overflow-x-auto rounded-lg border border-border">
-          <table className="w-full border-collapse text-[0.9em]">
-            <thead className="bg-muted/60">
-              <tr>
-                {header.map((h, c) => (
-                  <th
-                    key={c}
-                    lang="lo"
-                    className="border-b border-border px-3 py-2 text-left font-semibold"
-                  >
-                    {renderInline(h, onCite, `${key}-h${c}`)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, r) => (
-                <tr key={r} className="border-b border-border last:border-0">
-                  {row.map((cell, c) => (
-                    <td key={c} lang="lo" className="px-3 py-2 align-top">
-                      {renderInline(cell, onCite, `${key}-${r}-${c}`)}
-                    </td>
+        <figure key={key} className="my-4">
+          {/* max-h + sticky header: a 40-row account schedule scrolls inside its own box
+           * instead of pushing the rest of the answer off the screen, and the column
+           * names stay visible while you scroll. */}
+          <div className="border-border max-h-[28rem] overflow-auto rounded-xl border shadow-sm">
+            <table className="w-full border-collapse text-[0.88em] leading-[1.6]">
+              <thead className="bg-muted/80 supports-[backdrop-filter]:bg-muted/60 sticky top-0 z-10 backdrop-blur">
+                <tr>
+                  {header.map((h, c) => (
+                    <th
+                      key={c}
+                      lang="lo"
+                      scope="col"
+                      className={cn(
+                        "border-border border-b px-3 py-2.5 font-semibold whitespace-nowrap",
+                        alignClass(aligns[c] ?? "start"),
+                      )}
+                    >
+                      {renderInline(h, onCite, `${key}-h${c}`)}
+                    </th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>,
+              </thead>
+              <tbody>
+                {rows.map((row, r) => (
+                  <tr
+                    key={r}
+                    className="border-border hover:bg-muted/40 border-b transition-colors last:border-0 even:bg-muted/20"
+                  >
+                    {row.map((cell, c) => (
+                      <td
+                        key={c}
+                        lang="lo"
+                        className={cn(
+                          "px-3 py-2 align-top",
+                          alignClass(aligns[c] ?? "start"),
+                          // Tabular figures so digits sit in a column, not a ragged edge.
+                          numericCols[c] && "font-mono text-[0.95em] tabular-nums",
+                        )}
+                      >
+                        {renderInline(cell, onCite, `${key}-${r}-${c}`)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {/* Suppressed while a streamed table still has no body rows — "0 rows" flashing
+           * under a header the model is mid-way through writing reads as an error. */}
+          {rows.length > 0 && (
+            <figcaption className="text-muted-foreground mt-1.5 px-1 text-[0.72rem]">
+              {rows.length} {rows.length === 1 ? "row" : "rows"} · {header.length}{" "}
+              {header.length === 1 ? "column" : "columns"}
+            </figcaption>
+          )}
+        </figure>,
       );
       continue;
     }

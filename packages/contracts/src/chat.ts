@@ -11,7 +11,15 @@ import { z } from "zod";
  * the dataset.
  */
 
-export const sourceOrigin = z.enum(["dataset", "web", "erp"]);
+/**
+ * Where a citation came from, and therefore what it is worth.
+ *
+ * "calc" is a figure this system computed from values the USER supplied — exact, but true
+ * only of those inputs, so like "erp" it is point-in-time and never exportable as dataset
+ * knowledge. Keeping it a distinct origin is what lets the UI say so and the promote path
+ * exclude it, rather than a computed number quietly becoming a cited accounting fact.
+ */
+export const sourceOrigin = z.enum(["dataset", "web", "erp", "calc"]);
 export type SourceOrigin = z.infer<typeof sourceOrigin>;
 
 export const storedSource = z.object({
@@ -74,6 +82,30 @@ export type ApiConversationDetail = z.infer<typeof apiConversationDetail>;
  * That sounds obvious and was wrong in the first draft of this file, which is precisely why
  * ChatClient now derives its request type from here instead of hand-writing a parallel one.
  */
+/**
+ * Values the user supplies alongside a question, so the system computes rather than guesses.
+ *
+ * `amountLak` is a STRING and `rateBp` is an integer in basis points, both deliberately: a
+ * JSON number is a double, so a large kip amount would lose precision on the wire, and a
+ * fractional percent would smuggle a float into money arithmetic. LAK is integer-only
+ * (CLAUDE.md) and this is the boundary where that is easiest to break.
+ */
+export const givenValues = z.object({
+  /** Digits, optionally thousands-separated as typed. */
+  amountLak: z
+    .string()
+    .regex(/^[0-9][0-9,\s]*$/, "amount must be digits, optionally thousands-separated")
+    .optional(),
+  /** Basis points: 1000 = 10%. */
+  rateBp: z.number().int().min(0).max(10000).optional(),
+  mode: z.enum(["add", "extract"]).optional(),
+  attributes: z
+    .array(z.object({ label: z.string(), value: z.string() }))
+    .max(12)
+    .optional(),
+});
+export type GivenValues = z.infer<typeof givenValues>;
+
 export const chatRequest = z.object({
   message: z.string().min(1),
   conversationId: z.string().optional(),
@@ -82,6 +114,7 @@ export const chatRequest = z.object({
   webSearch: z.boolean().optional(),
   k: z.number().int().min(1).max(20).optional(),
   model: z.string().optional(),
+  values: givenValues.optional(),
 });
 export type ChatRequest = z.infer<typeof chatRequest>;
 

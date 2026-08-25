@@ -6,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../../lib/db.ts";
 import { generateStream } from "../../lib/ollama.ts";
 import { detectAndRunErpTools, erpToSources } from "../erp/service.ts";
+import { createLaoJoiner, fixLaoTypography } from "../lao/clean.ts";
 import { search } from "../search/service.ts";
 import { webSearch as searchWeb } from "../websearch/service.ts";
 import { condenseQuery } from "./condense.ts";
@@ -24,6 +25,7 @@ import {
   toSources,
   webToSources,
 } from "./prompt.ts";
+import { applyGivenValues, extractGivenValues, type GivenValues } from "./values.ts";
 
 export interface ChatParams {
   message: string;
@@ -35,6 +37,8 @@ export interface ChatParams {
   webSearch?: boolean;
   k?: number;
   model?: string;
+  /** Values/attributes the user supplied for this question (chat/values.ts). */
+  values?: GivenValues;
   tenant: TenantContext;
   signal?: AbortSignal;
 }
@@ -148,6 +152,17 @@ export async function* chatStream(p: ChatParams): AsyncGenerator<ChatEvent> {
       const web = await searchWeb(condensed.query, 3);
       sources = [...sources, ...webToSources(web, sources.length)];
     }
+    // Deterministic calculation over user-supplied values, appended last so its [n] is the
+    // highest number and the retrieved corpus keeps its usual ordering.
+    // Values come either from an explicit API caller or straight out of the question the
+    // user typed — there is one input box, so the sentence is where they normally live.
+    // Read from the LITERAL message, never `condensed.query`: the rewrite is for retrieval,
+    // and a paraphrase that moved a digit would compute the wrong figure exactly.
+    const suppliedValues = p.values ?? extractGivenValues(p.message);
+    const given = suppliedValues
+      ? applyGivenValues(suppliedValues, sources.length)
+      : { sources: [], promptBlock: "", error: null };
+    if (given.sources.length) sources = [...sources, ...given.sources];
     yield {
       type: "citations",
       sources,
@@ -166,17 +181,35 @@ export async function* chatStream(p: ChatParams): AsyncGenerator<ChatEvent> {
     );
     // The generator answers the user's ORIGINAL wording — only the retriever saw the
     // rewrite. Asking back a condensed question reads as if the assistant misheard.
-    const prompt = buildPrompt(p.message, sources, history);
+    const prompt = buildPrompt(p.message, sources, history, given.promptBlock);
 
     const streamOpts = p.model
       ? { system, model: p.model, ...(p.signal ? { signal: p.signal } : {}) }
       : { system, ...(p.signal ? { signal: p.signal } : {}) };
 
+    // Lao is written without spaces between words; a space marks a phrase boundary. The
+    // seeded corpus was authored space-segmented, and the generator copies the register of
+    // its context — so answers came out reading as a token list. Repaired on the way to the
+    // client AND into the stored message, so a reloaded conversation matches what was read
+    // live. Deterministic, offline, and applied to generated text only (never `content`).
+    const joiner = createLaoJoiner();
     let fullAnswer = "";
     for await (const tok of generateStream(prompt, streamOpts)) {
-      fullAnswer += tok;
-      yield { type: "token", t: tok };
+      const t = joiner.feed(tok);
+      if (t === "") continue;
+      fullAnswer += t;
+      yield { type: "token", t };
     }
+    const tail = joiner.flush();
+    if (tail !== "") {
+      fullAnswer += tail;
+      yield { type: "token", t: tail };
+    }
+    // Typography is settled once, on the finished answer, and only the stored copy is
+    // corrected: the rules are whole-text (trailing whitespace, blank-line runs) and
+    // re-emitting a rewritten answer mid-stream would make the text jump under the reader.
+    // The differences are whitespace-only, so the live and reloaded views agree on content.
+    fullAnswer = fixLaoTypography(fullAnswer);
 
     // ── 5. Persist the assistant turn ───────────────────────────────────────────
     const assistantMsg = await insertMessage(p.tenant, {

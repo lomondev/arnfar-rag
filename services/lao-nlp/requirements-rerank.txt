@@ -1,0 +1,10 @@
+# Optional cross-encoder reranking (see app/rerank.py). NOT installed by default: torch
+# plus the bge-reranker-v2-m3 weights add ~2.5 GB, and only the eval harness asks for
+# /rerank today. Build with `--build-arg WITH_RERANKER=1` to include it.
+#
+# CPU-only torch on purpose. The GPU on this box is Ollama's — bge-m3 embeddings and the
+# generator share it, and a reranker competing for the same VRAM would slow the thing it
+# is meant to improve. Install the CUDA build deliberately if you have headroom.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.5.1
+sentence-transformers==3.3.1

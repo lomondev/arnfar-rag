@@ -31,6 +31,7 @@
     "db:migrate": "bun --env-file=.env run --filter '@arnfar/db' migrate",
     "db:app-role": "bun --env-file=.env run --filter '@arnfar/db' app-role",
     "db:index:hnsw": "bun --env-file=.env run --filter '@arnfar/db' index:hnsw",
+    "db:reembed": "bun --env-file=.env run --filter '@arnfar/db' reembed",
     "dev:api": "bun --env-file=.env run --filter '@arnfar/rag-api' dev",
     "dev:web": "bun --env-file=.env run --filter '@arnfar/web' dev",
     "compose:up": "docker compose up -d",

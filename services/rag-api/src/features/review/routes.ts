@@ -91,6 +91,7 @@ export const reviewRoutes = new Elysia({ prefix: "/review" })
           reviewedBy: body.reviewer ?? "dev",
           reviewedAt: now,
           embedding: null, // force re-embed
+          embedModel: null,
         })
         .where(eq(schema.ragChunk.id, params.id));
       // Re-queue embedding for the document.

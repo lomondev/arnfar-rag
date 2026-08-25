@@ -21,6 +21,7 @@ import { toolsRoutes } from "./features/tools/routes.ts";
 import { websearchRoutes } from "./features/websearch/routes.ts";
 import { corsOrigin } from "./lib/cors.ts";
 import { closeDb } from "./lib/db.ts";
+import { assertEmbeddingProvenance } from "./lib/embedding-guard.ts";
 import { env } from "./lib/env.ts";
 import { newId } from "./lib/ids.ts";
 import { log } from "./lib/logger.ts";
@@ -91,6 +92,10 @@ startWorker();
 // policies. Deliberately not awaited before listen(): a database that is still starting
 // should delay readiness, not refuse to boot. /ready covers that case.
 void assertTenantIsolation();
+
+// Same treatment for the other silent-corruption risk: vectors produced by a model other
+// than the one this process embeds queries with. Postgres has no error for that.
+void assertEmbeddingProvenance();
 
 log.info("listening", {
   url: `http://${env.host}:${app.server?.port ?? env.port}`,

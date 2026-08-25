@@ -23,6 +23,14 @@ export const evalRun = pgTable("eval_run", {
   recallAt5: numeric("recall_at_5", { precision: 5, scale: 4 }),
   recallAt10: numeric("recall_at_10", { precision: 5, scale: 4 }),
   mrr: numeric("mrr", { precision: 5, scale: 4 }),
+  // Precision and NDCG joined recall/MRR so a run records ranking quality, not just
+  // presence. recall@5 answers "did the source reach the window"; ndcg@10 answers "was it
+  // at the top of it" — a generator with a 5-chunk window can fail on the second while the
+  // first looks fine. precision@5 is a tripwire for junk climbing into the context, and is
+  // read against a gold set of 1–2 citations (see metrics.ts).
+  precisionAt5: numeric("precision_at_5", { precision: 5, scale: 4 }),
+  ndcgAt10: numeric("ndcg_at_10", { precision: 5, scale: 4 }),
+  hitRateAt5: numeric("hit_rate_at_5", { precision: 5, scale: 4 }),
   faithfulness: numeric("faithfulness", { precision: 5, scale: 4 }),
   p95LatencyMs: integer("p95_latency_ms"),
   nQueries: integer("n_queries").notNull(),

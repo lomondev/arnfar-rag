@@ -28,6 +28,38 @@ dataset good, not the other way round.
 | **`arnfar-accounting-dataset`** | Versioned, licensed, immutable exports: cleaned Lao chunks, a Lao↔EN accounting glossary, cited QA pairs, SFT JSONL, and a held-out eval set. **The asset.** |
 | **`arnfar-ai-chat`** | Next.js Studio + RAG API. Cited Lao accounting answers, with Promote-to-dataset and Report-wrong closing the loop back into curation. **The tool.** |
 
+### The pipeline, end to end
+
+The dataset is not a by-product of the chat app; it is the point. Every stage below exists
+to move a document from "somebody's `.docx`" to "a cited row a person approved".
+
+```
+.docx / .md
+    │  docx-extractor → typed block stream (headings, tables, lists preserved)
+    ▼
+chunker              heading-aware · tables kept atomic · Lao sentences never split
+    │
+    ▼  lao-nlp /segment + /normalize
+rag_chunk            content (pristine) · content_norm (embed) · content_seg (lexical)
+    │  review = 'pending', embedding = NULL
+    ▼  Ollama bge-m3 — idempotent, resumable, concurrency-capped
+embedded chunks      + embed_model provenance, checked at every boot
+    │
+    ▼  /studio/review — a person accepts, edits, or rejects
+accepted chunks      rejected chunks never retrieve and never export
+    │
+    ├──▶ /studio/teach · /studio/qa      → cited QA pairs
+    ├──▶ /studio/glossary                → Lao↔EN terms, variants, forbidden forms
+    ▼
+/studio/export       versioned, immutable, sha256 manifest + data card
+    │
+    ▼
+/studio/eval         recall@k · MRR · faithfulness, judged cross-family
+```
+
+`/chat` sits on top of the same corpus and closes the loop: **Promote-to-dataset** turns a
+good answer into a QA pair, **Report-wrong** flags the chunks behind a bad one.
+
 ### Design constraints
 
 These are not preferences; the product does not work without them.
@@ -72,10 +104,50 @@ These are not preferences; the product does not work without them.
 The browser and RSC talk **only** to `rag-api`. Nothing else may reach Ollama, the sidecars,
 or Postgres — that boundary is what keeps inference and data access auditable in one place.
 
-**Retrieval** is hybrid: dense (HNSW over `content_norm` embeddings) fused with lexical
-(Postgres FTS over LaoNLP-segmented `content_seg`) using Reciprocal Rank Fusion. Lao has no
-inter-word spaces, so the segmented column exists purely to make the lexical index
-tokenizable — the embedder always sees natural text.
+**Retrieval** is hybrid by design: dense (HNSW over `content_norm` embeddings) fused with
+lexical (Postgres FTS over LaoNLP-segmented `content_seg`) using Reciprocal Rank Fusion at
+k=60. Lao has no inter-word spaces, so the segmented column exists purely to make the lexical
+index tokenizable — the embedder always sees natural text. The three text columns on
+`rag_chunk` are not interchangeable and getting them wrong collapses recall silently:
+
+| Column | Contents | Feeds |
+|---|---|---|
+| `content` | original Lao, byte-for-byte | display, LLM prompt context |
+| `content_norm` | NFC, zero-width stripped, whitespace collapsed | **dense embedding** |
+| `content_seg` | LaoNLP tokens joined by spaces | **`tsvector` / lexical only** |
+
+> ⚠ The lexical arm is currently returning no rows — see
+> [Known gaps](#known-gaps-stated-rather-than-buried). Retrieval is dense-only in practice.
+
+---
+
+## What you can actually do with it
+
+**`/chat`** — ask an accounting question in Lao and get a cited answer, or an abstention.
+
+- Streaming answers with a live retrieve → read → write progress indicator
+- **Citations you can open** — inline `[n]` chips and a per-answer reference list; clicking
+  either opens the source panel with the pristine chunk text, authority, and effective date
+- Table sources render as tables, in the answer and in the source panel
+- **Edit any question and resend** — later turns are dropped so the thread stays coherent
+- **Values in the question** get computed, not guessed: *"ຄິດໄລ່ອາກອນ 5,000,000 ກີບ 10%"*
+  runs an integer-only calculator server-side and cites the result
+- Knowledge-scope and model pickers, opt-in internet augmentation (off by default),
+  per-answer LaoNLP spell/terminology check
+- **Promote-to-dataset** and **Report-wrong** feed curation
+
+**`/studio/*`** — the dataset factory.
+
+| Page | Purpose |
+|---|---|
+| `/studio` | Overview dashboard and the gaps queue — questions the corpus answered badly |
+| `/studio/ingest` | Upload `.docx` / `.md`, watch extraction → chunking → embedding |
+| `/studio/review` | Accept, edit, or reject chunks; rejected never retrieves or exports |
+| `/studio/teach` | Claude-style curation chat — answer, correct, approve in one pass |
+| `/studio/qa` · `/studio/glossary` · `/studio/knowledge` | CRUD for QA pairs, Lao↔EN terms, and knowledge entries |
+| `/studio/lao-check` | LaoNLP spelling + glossary terminology, with a minimal-edit suggestion |
+| `/studio/export` | Versioned immutable export with a sha256 manifest and data card |
+| `/studio/eval` | Retriever matrix, recall/MRR/faithfulness, gate thresholds |
 
 ---
 
@@ -265,7 +337,7 @@ bun run check          # everything CI runs — do this before opening a PR
 bun run lint           # Biome (TS/JSON/CSS) + Ruff (Python)
 bun run lint:fix
 bun run typecheck      # tsc --strict × 5 packages + mypy --strict × 2 sidecars
-bun run test           # bun test + pytest
+bun run test           # bun test + pytest — 188 TS + 33 Python at time of writing
 ```
 
 | Command | What it does |
@@ -275,12 +347,14 @@ bun run test           # bun test + pytest
 | `bun run db:migrate` | Apply migrations |
 | `bun run db:app-role` | Create/refresh the unprivileged app role |
 | `bun run db:index:hnsw` | Build the HNSW index **after** a bulk embed load |
+| `bun run db:reembed --dry-run` | Which embedding model produced which vectors |
+| `bun run db:reembed` | Re-embed vectors that are not from the configured model |
 | `bun run seed` | Load the synthetic test corpus |
 | `bun run check:templates` | Refuse half-filled authored documents |
 | `./scripts/backup.sh` | Dump + prune (nightly cron target) |
 
-The database-backed suites — tenant isolation and the dataset export invariants — skip
-themselves when no `DATABASE_URL` is set, and always run in CI. `bun run test` is green
+The database-backed suites — tenant isolation, the `embed_model` invariant, and the dataset
+export rules — skip themselves when no `DATABASE_URL` is set, and always run in CI. `bun run test` is green
 either way; a green local run without a database has not exercised them.
 
 The HNSW index is deliberately **not** in the Drizzle schema: bulk-inserting into a live
@@ -325,19 +399,84 @@ Both `apps/web` and `services/rag-api` are organised by feature, not by layer �
 
 ---
 
-## Status
+## How it got here
 
-Development proceeds through approval-gated phases (`PROMPT.md` §6).
+Development runs through approval-gated phases (`PROMPT.md` §6); nothing advances without
+the previous gate's checklist passing. Roughly 67 commits, in this order:
 
-**Gates 0–5 are passed.** Ingestion, human review, QA and glossary curation, hybrid
-retrieval, chat with citations, versioned export, the eval harness, and read-only live-ERP
-tools are all shipped.
+| Phase | What landed |
+|---|---|
+| **0–4** | Monorepo scaffold, Drizzle schema, the two Python sidecars, the ingestion pipeline, and hybrid retrieval |
+| **5** | Dataset tooling — QA curator, glossary builder, versioned immutable export |
+| **6** | Eval harness — retriever matrix, faithfulness and abstention judging |
+| **7–8** | Cited streaming chat, Lao check, SEA-LION as the default generator |
 
-**Gate 6 — retrieval quality — is open:** recall@5 ≥ 0.9 and faithfulness ≥ 0.8 measured on
-real data, judged cross-family, never tuned on the held-out test split. The blocker is
-dataset volume rather than platform capability: the platform is ahead of the data, so the
-work is filling the factory rather than extending it. [`docs/ROADMAP.md`](./docs/ROADMAP.md)
-is the plan.
+After the initial phases the work turned to hardening and to the Studio as a real curation
+surface:
 
-Known gaps, stated rather than buried: **there is no authentication layer**, and
-schema-validated request bodies cover 48 of 75 API routes.
+- **Server-persisted conversations** (`rag_conversation` / `rag_message`) replacing localStorage
+- **Studio build-out** — overview dashboard and gaps queue, teach mode, ingest workbench,
+  user-defined knowledge kinds, entry search, full CRUD for QA / glossary / chart of accounts
+- **Live-ERP read-only tools** cited in chat, behind `features/agent` + `features/tools`
+- **Retrieval correctness** — follow-up condensing, an RRF candidate floor so top-1 is stable
+  across `k`, provenance carried through citations
+- **Row-level security** — tenant isolation moved out of convention and into Postgres policies,
+  with `FORCE ROW LEVEL SECURITY` and a two-tenant regression test
+- **Load-bearing contracts** — the web parses API responses with the shared zod schemas
+  instead of casting, so drift is a named error at the fetch boundary
+- **Operational baseline** — Biome + Ruff across the whole repo, structured logging, graceful
+  shutdown, a real readiness probe, container images, CI, nightly backups
+- **Recent** — embedding-model provenance with a boot-time guard; an eval harness that refuses
+  to record a metric it did not measure; Lao answer repair (word-space joining, typography);
+  clickable citations and rendered tables in chat; edit-and-resend; a deterministic integer
+  VAT calculator driven by values written in the question
+
+---
+
+## Where it stands
+
+Measured against the live development database, not asserted:
+
+| | Now | Phase-2 target |
+|---|---|---|
+| Documents ingested | 12 | all core MoF / company documents |
+| Chunks (all embedded) | 100 | — |
+| Chunks human-accepted | 34 | — |
+| Verified QA pairs | 41 | 300–500 |
+| Verified glossary terms | 1 of 46 | ~150 |
+| Verified account rows | 0 of 96 | — |
+| Knowledge kinds defined | 0 | ~10 |
+
+**Latest eval** — hybrid RRF over 41 verified QA pairs:
+
+| Metric | Result | Gate 6 bar |
+|---|---|---|
+| recall@5 | **0.927** | ≥ 0.9 ✅ |
+| recall@10 | 0.927 | — |
+| MRR | 0.770 | — |
+| p95 retrieval | 8 ms | < 150 ms ✅ |
+| faithfulness | **not yet measured** | ≥ 0.8 |
+
+Read those two ticks narrowly. The corpus is 100 chunks, so 8 ms says nothing about the
+budget's real target of 200k chunks, and 41 queries is just past the 30-query threshold below
+which a recall figure cannot separate 0.9 from 0.7. Faithfulness needs the generation arm,
+which has not been run.
+
+**Gate 6 is therefore still open**, and the blocker remains dataset volume rather than
+platform capability — [`docs/ROADMAP.md`](./docs/ROADMAP.md) is the plan for closing it.
+
+### Known gaps, stated rather than buried
+
+- **There is no authentication layer.** The bind address is the only thing between the
+  ledgers and the network. See [Serving over a network](#serving-over-a-network).
+- **The lexical half of hybrid retrieval currently returns nothing.** The FTS index is
+  healthy, but the query is built with `plainto_tsquery`, which ANDs every term — a
+  14-token segmented Lao question demands all 14 tokens in one chunk and matches zero rows.
+  The eval matrix shows it plainly: `dense 0.927` / `lexical 0.000` / `hybrid 0.927`.
+  Retrieval is dense-only in practice until the query becomes disjunctive.
+- **The corpus is authored space-segmented.** Lao is written without inter-word spaces, but
+  `seed/` and `templates/` put a space between every word, so answers inherit the defect.
+  It is repaired at generation time; the durable fix is re-authoring the source.
+- Schema-validated request bodies cover 48 of 75 API routes.
+- 100 chunks carry no embedding provenance (they predate the `embed_model` column);
+  `bun run db:reembed --dry-run` reports them.

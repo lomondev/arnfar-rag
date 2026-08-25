@@ -10,6 +10,7 @@ import { createQa, verifyQa } from "../qa/service.ts";
 import {
   createConversation,
   deleteConversation,
+  deleteMessagesFrom,
   getConversation,
   listConversations,
   renameConversation,
@@ -76,6 +77,19 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
     return { deleted: ok };
   })
 
+  // ── Edit-and-resend: drop a turn and everything after it ───────────────────
+  // The client then re-sends the edited question through /stream, which re-inserts the
+  // user turn. Splitting it this way means the edited question takes exactly the same
+  // retrieval and generation path as a fresh one — no second code path to drift.
+  .delete("/messages/:id", async ({ params, set }) => {
+    const result = await deleteMessagesFrom(devTenant(), params.id);
+    if (!result) {
+      set.status = 404;
+      return { error: "message not found" };
+    }
+    return result;
+  })
+
   // ── Installed generator models (for the /chat model picker) ───────────────
   // Only rag-api may touch Ollama (CLAUDE.md), so the web app fetches the model list
   // through here rather than hitting Ollama's /api/tags directly.
@@ -100,6 +114,7 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
         ...(body.webSearch ? { webSearch: body.webSearch } : {}),
         ...(body.k ? { k: body.k } : {}),
         ...(body.model ? { model: body.model } : {}),
+        ...(body.values ? { values: body.values } : {}),
       });
       const stream = new ReadableStream({
         async start(controller) {
@@ -134,6 +149,19 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
         webSearch: t.Optional(t.Boolean()),
         k: t.Optional(t.Number({ minimum: 1, maximum: 20 })),
         model: t.Optional(t.String()),
+        // Values the user supplied for this question. amountLak is a STRING: a JSON number
+        // is a double, and a large kip amount would lose precision on the wire before the
+        // integer calculator ever saw it.
+        values: t.Optional(
+          t.Object({
+            amountLak: t.Optional(t.String({ pattern: "^[0-9][0-9,\\s]*$" })),
+            rateBp: t.Optional(t.Integer({ minimum: 0, maximum: 10000 })),
+            mode: t.Optional(t.Union([t.Literal("add"), t.Literal("extract")])),
+            attributes: t.Optional(
+              t.Array(t.Object({ label: t.String(), value: t.String() }), { maxItems: 12 }),
+            ),
+          }),
+        ),
       }),
     },
   )

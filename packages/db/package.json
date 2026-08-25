@@ -11,7 +11,8 @@
     "generate": "drizzle-kit generate",
     "migrate": "drizzle-kit migrate",
     "index:hnsw": "bun run ./src/scripts/build-hnsw.ts",
-    "app-role": "bun run ./src/scripts/app-role.ts"
+    "app-role": "bun run ./src/scripts/app-role.ts",
+    "reembed": "bun run ./src/scripts/reembed.ts"
   },
   "dependencies": {
     "drizzle-orm": "0.38.3",

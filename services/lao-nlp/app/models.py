@@ -11,6 +11,10 @@ class HealthResponse(BaseModel):
     word_tokenize: bool
     sent_tokenize: bool
     dictionary_size: int
+    # False on the default (small) image, where /rerank answers 503. Reported so a caller
+    # can tell "reranking is off" from "reranking is broken" without parsing an error.
+    rerank: bool = False
+    rerank_model: str | None = None
 
 
 class TextRequest(BaseModel):
@@ -62,3 +66,22 @@ class SpellcheckResponse(BaseModel):
     tokens: list[SpellToken]
     unknown_count: int
     lang: str
+
+
+class RerankRequest(BaseModel):
+    query: str
+    documents: list[str]
+    # Rerank a wider net than you keep: the cross-encoder's whole job is to reorder
+    # candidates the bi-encoder ranked badly, and it cannot promote what was never sent.
+    top_k: int = Field(default=5, gt=0, le=200)
+
+
+class RerankHit(BaseModel):
+    # Index into the request's `documents`, not the text — the caller holds the chunk ids.
+    index: int
+    score: float
+
+
+class RerankResponse(BaseModel):
+    hits: list[RerankHit]
+    model: str

@@ -1,6 +1,6 @@
 import type { TenantContext } from "@arnfar/db";
 import { schema } from "@arnfar/db";
-import { and, asc, desc, eq, lt } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lt } from "drizzle-orm";
 
 import { db } from "../../lib/db.ts";
 import { newId } from "../../lib/ids.ts";
@@ -263,6 +263,60 @@ export async function insertMessage(
     meta: input.meta ?? {},
     createdAt: now.toISOString(),
   };
+}
+
+/**
+ * Delete a message and everything after it in its conversation.
+ *
+ * This is the "edit and resend" primitive. Editing turn 3 of a 10-turn thread cannot leave
+ * turns 4–10 in place: they were answers to a question that no longer exists, and the next
+ * request would feed the model a history where the reply precedes its own prompt. Truncating
+ * is the same choice every chat product makes, and it keeps `recentMessages` honest.
+ *
+ * Deletes by `created_at >= target`, which also removes the assistant turn that shares the
+ * pair — ids are UUIDv7 so this matches insertion order exactly.
+ *
+ * Returns null when the message does not exist for this tenant; RLS scopes the read, and
+ * the explicit predicates keep the intent visible (CLAUDE.md).
+ */
+export async function deleteMessagesFrom(
+  tenant: TenantContext,
+  messageId: string,
+): Promise<{ conversationId: string; deleted: number } | null> {
+  const [target] = await db()
+    .select({
+      id: schema.ragMessage.id,
+      conversationId: schema.ragMessage.conversationId,
+      createdAt: schema.ragMessage.createdAt,
+    })
+    .from(schema.ragMessage)
+    .where(
+      and(
+        eq(schema.ragMessage.id, messageId),
+        eq(schema.ragMessage.hfId, tenant.hfId),
+        eq(schema.ragMessage.companyId, tenant.companyId),
+      ),
+    )
+    .limit(1);
+  if (!target) return null;
+
+  const removed = await db()
+    .delete(schema.ragMessage)
+    .where(
+      and(
+        eq(schema.ragMessage.conversationId, target.conversationId),
+        eq(schema.ragMessage.hfId, tenant.hfId),
+        eq(schema.ragMessage.companyId, tenant.companyId),
+        gte(schema.ragMessage.createdAt, target.createdAt),
+      ),
+    )
+    .returning({ id: schema.ragMessage.id });
+
+  await auditEvent(tenant, "conversation", target.conversationId, "message.truncated", {
+    fromMessageId: messageId,
+    deleted: removed.length,
+  });
+  return { conversationId: target.conversationId, deleted: removed.length };
 }
 
 /** Load the last N messages of a conversation for multi-turn context injection.

@@ -62,6 +62,14 @@ Full spec: [`PROMPT.md`](./PROMPT.md). Build proceeds in **approval-gated phases
 | `content` | original, pristine Lao — byte-for-byte | display, LLM prompt context |
 | `content_norm` | NFC, ZWSP-stripped (`U+200B`/`U+FEFF`), whitespace-collapsed | **dense embedding input** |
 | `content_seg` | LaoNLP tokens joined by spaces | **`tsvector` / lexical (BM25) input only** |
+- **Every vector records the model that produced it** (`rag_chunk.embed_model`, migration
+  `0004_embed_provenance`). `OLLAMA_EMBED_MODEL` is configurable and vectors from two models
+  share no geometry, but bge-m3 and multilingual-e5-large are both 1024-dim — so
+  `halfvec(1024)` accepts either and HNSW ranks one against the other with no error. A CHECK
+  constraint keeps `embed_model` and `embedding` written and cleared together; rag-api runs
+  `assertEmbeddingProvenance()` at boot and refuses to serve in production on a mixed corpus.
+  Moving a corpus between embedding models is `bun run db:reembed`, never a side effect of
+  ingest.
 - **Embed `content_norm`. NEVER embed `content_seg`.** Injecting word-boundary spaces corrupts
   bge-m3's own tokenization and quietly degrades dense recall. `content_seg` exists solely so
   `to_tsvector('simple', content_seg)` can tokenize spaceless Lao. Queries are segmented the same
@@ -110,6 +118,13 @@ it — do not just undo it.
 4. **Cross-encoder reranking (`bge-reranker-v2-m3` in the lao-nlp sidecar) and cross-model
    LLM-judging** (gemma3 judges qwen3 and vice versa, calibrated against ~20 human labels) are the
    plan for Phase 6/7 — the generator must not judge or rerank its own output with the same model.
+   Reranking now exists as `lao-nlp POST /rerank` and the `hybrid-rrf+rerank` **eval arm**, and
+   is deliberately **not on the `/chat` or `/search` path**: on CPU it costs seconds against a
+   150 ms p95 budget, so it must first show, in a run, that it earns the latency. torch and the
+   weights (~2.5 GB) are an **opt-in build** — the default image answers `/rerank` with 503 and
+   `/health` reports `rerank: false`, so nothing on the ingest path pays for a capability only
+   the harness uses. Build it with `LAO_NLP_RERANKER=1 docker compose up -d --build lao-nlp`;
+   the weights are baked into the image and `HF_HUB_OFFLINE=1` keeps the runtime path offline.
 5. **Multi-tenant columns and query filters exist everywhere from day one**, but the dev
    environment seeds a **single tenant** (`DEV_HF_ID` / `DEV_COMPANY_ID` in `.env`).
 
@@ -144,6 +159,10 @@ bun run db:migrate                 # apply migrations
 bun run db:index:hnsw              # build the HNSW index AFTER a bulk embed load (see decision 3)
 bun run db:app-role                # create/refresh the unprivileged role the app connects as.
                                    # REQUIRED: RLS is inert while the app is a superuser.
+bun run db:reembed --dry-run       # embedding-provenance census: which model produced which
+                                   # vectors. Run it before trusting a recall number.
+bun run db:reembed                 # re-embed every vector not from the configured model
+bun run db:reembed --stamp         # label unknown-provenance rows without re-embedding
 
 # run services on the host
 bun run dev:api                    # rag-api  :7730
@@ -273,8 +292,13 @@ Rules for this suite:
 Gate ledger:
 - **GATE 0–5: passed.** Scaffold, schema, ingest + review, hybrid retrieval, chat with
   citations, versioned export, eval harness, and the live-ERP read-only tools are all shipped.
-- **GATE 6 (retrieval quality) ← current.** recall@5 ≥ 0.9 and faithfulness ≥ 0.8 measured on
-  real data via `/studio/eval`, judged cross-family (`qwen3:8b` judging the Gemma-based
-  generator). Never tune on `qa_test`. The blocker is dataset volume, not platform capability —
-  see `docs/ROADMAP.md`, which is the plan of record for reaching it.
+- **GATE 6 (retrieval quality) ← current.** Measured by `eval_run`, which records recall@5/@10,
+  hit@5, nDCG@10, precision@5, MRR, faithfulness and p95. Read them for what each can answer:
+  **recall@5 and faithfulness are the gate**; **nDCG@10** is the one to watch when recall is
+  already high and answers are still wrong (recall cannot tell rank 1 from rank 10, and a
+  5-chunk context window very much can); **precision@5** is a junk tripwire and is capped by
+  gold-set size (1–2 citations per QA pair), so it is never a threshold. The bar: recall@5 ≥ 0.9
+  and faithfulness ≥ 0.8 measured on real data via `/studio/eval`, judged cross-family
+  (`qwen3:8b` judging the Gemma-based generator). Never tune on `qa_test`. The blocker is
+  dataset volume, not platform capability — see `docs/ROADMAP.md`, the plan of record.
 - GATE 7 → 8: see `PROMPT.md` §6.

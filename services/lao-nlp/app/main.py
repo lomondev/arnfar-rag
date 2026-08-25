@@ -8,15 +8,19 @@ Postgres tsvector is built over. `content` stays pristine; the dense embedding u
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from . import chunking, detect, lao, spell, textnorm
+from . import rerank as rerank_mod
 from .models import (
     ChunkOut,
     ChunkRequest,
     ChunkResponse,
     HealthResponse,
     NormalizeResponse,
+    RerankHit,
+    RerankRequest,
+    RerankResponse,
     SegmentResponse,
     SpellcheckResponse,
     SpellToken,
@@ -29,12 +33,15 @@ app = FastAPI(title="arnfar-lao-nlp", version="1.0.0")
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     caps = lao.capabilities()
+    has_rerank = rerank_mod.available()
     return HealthResponse(
         status="ok",
         service="arnfar-lao-nlp",
         word_tokenize=caps["word_tokenize"],
         sent_tokenize=caps["sent_tokenize"],
         dictionary_size=caps["dictionary_size"],
+        rerank=has_rerank,
+        rerank_model=rerank_mod.model_name() if has_rerank else None,
     )
 
 
@@ -86,4 +93,19 @@ def spellcheck(req: TextRequest) -> SpellcheckResponse:
         tokens=[SpellToken(**r) for r in results],
         unknown_count=unknown,
         lang=detect.detect_lang(req.text),
+    )
+
+
+@app.post("/rerank", response_model=RerankResponse)
+def rerank(req: RerankRequest) -> RerankResponse:
+    """Cross-encoder reranking. 503 on the default image — see app/rerank.py."""
+    try:
+        ranked = rerank_mod.rerank(req.query, req.documents, req.top_k)
+    except RuntimeError as exc:
+        # 503, not 500: the service is fine, this capability is simply not built in, and
+        # the caller should fall back to the fused order rather than fail the query.
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return RerankResponse(
+        hits=[RerankHit(index=i, score=s) for i, s in ranked],
+        model=rerank_mod.model_name(),
     )

@@ -74,7 +74,10 @@ export async function retroClean(tenant: Tenant, dryRun: boolean): Promise<Retro
       .set({
         contentNorm: fixLaoDefects(r.contentNorm),
         contentSeg: seg.seg_text,
+        // Provenance goes out with the vector it described — the CHECK constraint on
+        // rag_chunk enforces that pairing rather than trusting each call site to remember.
         embedding: null,
+        embedModel: null,
       })
       .where(eq(schema.ragChunk.id, r.id));
     fixed++;

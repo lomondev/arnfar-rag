@@ -34,11 +34,27 @@ export interface LaoCheckResult {
   lang: string;
   spelling: SpellingIssue[];
   terminology: TerminologyViolation[];
+  /** Empty when the caller asked for the checkers only (`rewrite: false`). */
   rewrite: string;
   disclaimer: string;
 }
 
-export async function checkLao(tenant: TenantContext, text: string): Promise<LaoCheckResult> {
+export interface LaoCheckOptions {
+  /**
+   * Run the LLM minimal-edit rewrite. Default true.
+   *
+   * The rewrite is an Ollama round-trip and dominates the latency of this call. /chat
+   * checks an answer the reader is already looking at, and only needs the deterministic
+   * findings — LaoNLP spelling plus glossary terminology — which are sidecar-and-SQL only.
+   */
+  rewrite?: boolean;
+}
+
+export async function checkLao(
+  tenant: TenantContext,
+  text: string,
+  options: LaoCheckOptions = {},
+): Promise<LaoCheckResult> {
   const [norm, spell] = await Promise.all([normalize(text), spellcheck(text)]);
 
   const spelling: SpellingIssue[] = spell.tokens
@@ -69,7 +85,10 @@ export async function checkLao(tenant: TenantContext, text: string): Promise<Lao
     }
   }
 
-  const rewrite = await rewriteSuggestion(tenant, norm.normalized, terms, spelling, terminology);
+  const rewrite =
+    options.rewrite === false
+      ? ""
+      : await rewriteSuggestion(tenant, norm.normalized, terms, spelling, terminology);
 
   return {
     original: text,

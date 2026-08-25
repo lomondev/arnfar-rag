@@ -16,6 +16,9 @@ import type { MessageRole, StoredSource } from "@arnfar/contracts";
 export type { StoredSource };
 
 export interface StoredMessage {
+  /** Server id (`rag_message.id`). Absent on an optimistic turn that has not been
+   *  persisted yet — which is exactly when editing it is meaningless anyway. */
+  readonly id?: string;
   readonly role: MessageRole;
   readonly content: string;
   readonly sources?: readonly StoredSource[];
@@ -64,4 +67,30 @@ export function groupByRecency(list: readonly Conversation[], now: number): Conv
     bucket?.items.push(c);
   }
   return buckets.filter((b) => b.items.length > 0).map(({ label, items }) => ({ label, items }));
+}
+
+/**
+ * Resolve the number inside a citation marker to one of the answer's sources.
+ *
+ * A well-behaved generator emits `[1]`, `[2]` — a 1-based index into `sources`, and the
+ * first branch is the whole story. The small quantised Lao models do not: gemma-3n-laos
+ * emits `[n]411`, where 411 is the *account code* it is citing, not an index. That number
+ * is still a real handle on the evidence — the source containing account 411 is the source
+ * the sentence rests on — so fall back to finding it in the retrieved text rather than
+ * dropping the citation on the floor.
+ *
+ * Returns null when the marker resolves to nothing; the caller shows the full reference
+ * list instead, which is always honest.
+ */
+export function resolveCitation(
+  sources: readonly StoredSource[],
+  n: number | null,
+): StoredSource | null {
+  if (n === null || sources.length === 0) return null;
+  if (n >= 1 && n <= sources.length) return sources[n - 1] ?? null;
+
+  // Standalone-token match: `47` must not match inside `470` or `147`. Lao text has no
+  // spaces, so word boundaries are useless here — bound on digits only.
+  const token = new RegExp(`(?<![0-9])${n}(?![0-9])`);
+  return sources.find((s) => token.test(s.content) || token.test(s.title)) ?? null;
 }

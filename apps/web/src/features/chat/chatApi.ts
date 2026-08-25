@@ -42,6 +42,7 @@ function toConversation(d: ApiConversationDetail): Conversation {
     createdAt: toEpoch(d.createdAt),
     updatedAt: toEpoch(d.updatedAt),
     messages: d.messages.map((m) => ({
+      id: m.id,
       role: m.role,
       content: m.content,
       sources: m.sources ?? undefined,
@@ -129,6 +130,18 @@ export async function promoteToDataset(input: {
   reviewer?: string;
 }): Promise<void> {
   await post("/chat/promote", input);
+}
+
+/**
+ * Drop a message and every turn after it, server-side.
+ *
+ * The edit-and-resend half that has to be durable: without it the edited question would be
+ * appended after the answer it replaces, and the next turn's history would read as a reply
+ * that precedes its own prompt.
+ */
+export async function truncateFrom(messageId: string): Promise<void> {
+  const res = await fetch(`${BASE}/chat/messages/${messageId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`rag-api truncate → ${res.status}`);
 }
 
 export async function reportWrong(chunkIds: readonly string[]): Promise<void> {

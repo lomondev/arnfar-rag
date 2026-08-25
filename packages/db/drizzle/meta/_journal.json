@@ -29,6 +29,20 @@
       "when": 1784701143800,
       "tag": "0003_tenant_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787671044334,
+      "tag": "0004_embed_provenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787672252572,
+      "tag": "0005_eval_ranking_metrics",
+      "breakpoints": true
     }
   ]
 }

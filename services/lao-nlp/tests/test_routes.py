@@ -67,3 +67,39 @@ def test_spellcheck_marks_non_lao_tokens_as_not_lao() -> None:
 def test_empty_text_is_handled_not_crashed() -> None:
     for path in ("/segment", "/normalize", "/spellcheck"):
         assert client.post(path, json={"text": ""}).status_code == 200
+
+
+def test_health_reports_whether_reranking_is_built_in() -> None:
+    r = client.get("/health")
+    body = r.json()
+    # Present on both images. rag-api reads this to decide whether the `hybrid-rrf+rerank`
+    # arm is offerable, so its absence would silently disable the arm rather than explain it.
+    assert isinstance(body["rerank"], bool)
+    assert (body["rerank_model"] is None) is (body["rerank"] is False)
+
+
+def test_rerank_is_503_not_500_when_the_model_is_not_installed() -> None:
+    """The default image has no torch. That is a capability answer, not a crash.
+
+    503 is what lets rag-api fall back to the fused RRF order instead of failing the query,
+    so the status code is part of the contract and asserted here.
+    """
+    from app import rerank as rerank_mod
+
+    r = client.post("/rerank", json={"query": "ອາກອນມູນຄ່າເພີ່ມ", "documents": ["ກ", "ຂ"]})
+    if rerank_mod.available():
+        assert r.status_code == 200
+        body = r.json()
+        assert [h["index"] for h in body["hits"]] == sorted(
+            (h["index"] for h in body["hits"]),
+            key=lambda i: -next(x["score"] for x in body["hits"] if x["index"] == i),
+        )
+        assert body["model"] == rerank_mod.model_name()
+    else:
+        assert r.status_code == 503
+        assert "reranker not installed" in r.json()["detail"]
+
+
+def test_rerank_rejects_a_nonsense_top_k() -> None:
+    r = client.post("/rerank", json={"query": "ກ", "documents": ["ຂ"], "top_k": 0})
+    assert r.status_code == 422

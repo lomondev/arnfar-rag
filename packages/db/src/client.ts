@@ -102,3 +102,31 @@ export async function checkTenantBinding(database: Database): Promise<TenantBind
     companyId: row.company_id,
   };
 }
+
+/** One row of the embedding-provenance census: a model name (or null for vectors written
+ *  before `embed_model` existed) and how many chunks carry it. */
+export interface EmbeddingCensusRow {
+  /** null = embedded, provenance unknown (pre-migration-0004 rows). */
+  readonly model: string | null;
+  readonly chunks: number;
+}
+
+/**
+ * Which embedding models are actually present in this tenant's vectors.
+ *
+ * Counts only embedded chunks — `embedding IS NULL` rows are pending work, not a mixed
+ * index. The partial index on `embed_model` makes this an index-only scan, which matters
+ * because it runs on every boot.
+ *
+ * Reads through RLS like everything else, so it reports the connected tenant's corpus.
+ */
+export async function embeddingCensus(database: Database): Promise<EmbeddingCensusRow[]> {
+  const rows = await database.$client<{ model: string | null; chunks: string }[]>`
+    SELECT embed_model AS model, count(*)::text AS chunks
+    FROM rag_chunk
+    WHERE embedding IS NOT NULL
+    GROUP BY embed_model
+    ORDER BY count(*) DESC
+  `;
+  return rows.map((r) => ({ model: r.model, chunks: Number(r.chunks) }));
+}

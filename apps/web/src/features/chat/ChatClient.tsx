@@ -2,6 +2,14 @@
 
 import type { ChatRequest, StreamEvent as ContractStreamEvent } from "@arnfar/contracts";
 import { Button } from "@arnfar/ui/components/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@arnfar/ui/components/dialog";
 import { Input } from "@arnfar/ui/components/input";
 import { Select } from "@arnfar/ui/components/select";
 import { cn } from "@arnfar/ui/lib/utils";
@@ -9,6 +17,7 @@ import {
   ArrowUp,
   BookOpen,
   Check,
+  ChevronDown,
   Copy,
   Flag,
   Globe,
@@ -19,6 +28,7 @@ import {
   Plus,
   Quote,
   Search,
+  SpellCheck,
   Square,
   Sun,
   Trash2,
@@ -34,11 +44,13 @@ import {
   listConversations,
   promoteToDataset,
   reportWrong,
+  truncateFrom,
 } from "./chatApi";
-import { renderMarkdown } from "./markdown";
+import { hasPipeTable, renderMarkdown } from "./markdown";
 import {
   type Conversation,
   groupByRecency,
+  resolveCitation,
   type StoredMessage,
   type StoredSource,
   titleFrom,
@@ -46,6 +58,16 @@ import {
 import { shortModel, useModels } from "./useModels";
 
 const BASE = apiBaseUrl();
+
+/** The citation panel shows one source; there is nothing to cite from inside it. */
+const noCite = () => {};
+
+/** What `POST /lao/check` reports back for one answer (rewrite:false — checkers only). */
+interface LaoCheck {
+  spelling: { token: string; suggestions: string[] }[];
+  terminology: { found: string; useInstead: string; termEn: string }[];
+  disclaimer: string;
+}
 
 /**
  * Chrome only. The language toggle never touches message content — Lao answers stay Lao
@@ -64,6 +86,15 @@ const UI = {
     report: "ລາຍງານຜິດ",
     reported: "ລາຍງານແລ້ວ",
     copy: "ສຳເນົາ",
+    edit: "ແກ້ໄຂ",
+    editTitle: "ແກ້ໄຂຄຳຖາມ",
+    editWarn: "ການສົ່ງຄືນຈະລຶບຄຳຕອບ ແລະ ຄຳຖາມທັງໝົດຫຼັງຈາກຄຳຖາມນີ້",
+    cancel: "ຍົກເລີກ",
+    resend: "ສົ່ງຄືນ",
+    laoCheck: "ກວດພາສາລາວ",
+    laoOk: "ບໍ່ພົບບັນຫາ",
+    laoSpelling: "ຄຳທີ່ບໍ່ຢູ່ໃນວັດຈະນານຸກົມ",
+    laoTerms: "ຄຳສັບທີ່ຄວນປ່ຽນ",
     sources: "ແຫຼ່ງອ້າງອີງ",
     empty: "ຍັງບໍ່ມີການສົນທະນາ",
     hint: "Enter ສົ່ງ · Shift+Enter ຂຶ້ນແຖວໃໝ່",
@@ -83,6 +114,15 @@ const UI = {
     report: "Report wrong",
     reported: "Reported",
     copy: "Copy",
+    edit: "Edit",
+    editTitle: "Edit question",
+    editWarn: "Resending discards this answer and every turn after it.",
+    cancel: "Cancel",
+    resend: "Resend",
+    laoCheck: "Check Lao",
+    laoOk: "No issues found",
+    laoSpelling: "Not in dictionary",
+    laoTerms: "Terminology to replace",
     sources: "Sources",
     empty: "No conversations yet",
     hint: "Enter to send · Shift+Enter for a new line",
@@ -114,17 +154,20 @@ const STREAM_FLUSH_MS = 80;
 
 /** Markdown body of one message, memoized so completed messages skip re-parsing
  *  while a later answer streams — only the in-flight message re-renders per flush.
- *  `onOpenSource` must be referentially stable (a useState setter is). */
+ *  `onCite` must be referentially stable (hence the message index as a prop rather than
+ *  a fresh closure per render). */
 const MessageBody = memo(function MessageBody({
   content,
   sources,
-  onOpenSource,
+  index,
+  onCite,
 }: {
   content: string;
   sources?: readonly StoredSource[];
-  onOpenSource: (s: StoredSource | null) => void;
+  index: number;
+  onCite: (index: number, source: StoredSource | null) => void;
 }) {
-  return <>{renderMarkdown(content, (n) => onOpenSource(sources?.[n - 1] ?? null))}</>;
+  return <>{renderMarkdown(content, (n) => onCite(index, resolveCitation(sources ?? [], n)))}</>;
 });
 
 export function ChatClient() {
@@ -146,7 +189,27 @@ export function ChatClient() {
   const [theme, setTheme] = useState<Theme>("light");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [panel, setPanel] = useState<StoredSource | null>(null);
+  // Index of the message whose reference list is expanded. The generator does not
+  // reliably emit inline `[n]` markers, so the footer list is the dependable way to
+  // reach a citation — one open at a time keeps the thread readable.
+  const [refsFor, setRefsFor] = useState<number | null>(null);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  // LaoNLP findings per message index. Surfaced, never auto-applied: LaoNLP provides
+  // spell-checking against a word list, not grammar correction, and silently rewriting an
+  // accounting answer on an edit-distance guess is exactly how a rate or an account code
+  // gets quietly changed. The service's own disclaimer says the same thing.
+  const [laoCheck, setLaoCheck] = useState<Record<number, LaoCheck>>({});
+  const [laoBusy, setLaoBusy] = useState<number | null>(null);
+  // The user turn open in the edit modal, and its working text.
+  //
+  // The message's id and original text are captured here rather than re-read from
+  // `messages[idx]` at submit time: the modal stays open across a re-render, and a thread
+  // that reloads underneath it would otherwise silently retarget the edit at whatever turn
+  // now sits at that index — truncating the wrong half of the conversation.
+  const [editing, setEditing] = useState<{ idx: number; id: string; original: string } | null>(
+    null,
+  );
+  const [editDraft, setEditDraft] = useState("");
   const [k, setK] = useState(8);
   // Retrieval scope: "" = all knowledge, "kind:KEY" = one knowledge kind's entries.
   // Users think in their /studio/knowledge categories — raw collections are not exposed.
@@ -166,6 +229,14 @@ export function ChatClient() {
   const t = UI[lang];
   const messages = activeThread?.messages ?? [];
   const modelLabel = shortModel(model || MODELS.default || "SEA-LION");
+
+  /** Clicking a citation marker in an answer opens that answer's reference list *and*, when
+   *  the marker resolves to a specific source, that source's panel. When it does not resolve
+   *  the list alone is the honest answer: here is everything this claim was drawn from. */
+  const handleCite = useCallback((index: number, source: StoredSource | null) => {
+    setRefsFor(index);
+    if (source) setPanel(source);
+  }, []);
 
   // Load the conversation list from the server after mount (avoid hydration mismatch).
   useEffect(() => {
@@ -429,11 +500,86 @@ export function ChatClient() {
     window.setTimeout(() => setCopiedIdx((cur) => (cur === idx ? null : cur)), 1500);
   }
 
+  function startEdit(msg: StoredMessage, idx: number) {
+    if (!msg.id) return;
+    setEditing({ idx, id: msg.id, original: msg.content });
+    setEditDraft(msg.content);
+  }
+
+  function cancelEdit() {
+    setEditing(null);
+    setEditDraft("");
+  }
+
+  /**
+   * Replace a question and re-answer from that point.
+   *
+   * The turns after it are dropped first, server-side: they answered a question that no
+   * longer exists, and leaving them would feed the next request a history in which a reply
+   * precedes its own prompt. Then the edited text goes through the ordinary `send()` path,
+   * so an edited question gets exactly the same retrieval and generation as a fresh one.
+   */
+  async function submitEdit() {
+    if (!editing) return;
+    const { idx, id, original } = editing;
+    const next = editDraft.trim();
+    if (!next || streaming) return;
+    if (next === original) {
+      cancelEdit();
+      return;
+    }
+    cancelEdit();
+    setPanel(null);
+    setRefsFor(null);
+    try {
+      await truncateFrom(id);
+    } catch {
+      // The server still holds the old turns, so re-sending would duplicate the question.
+      // Re-read the thread from the server and leave the user where they were, rather than
+      // showing a local state that no longer matches what is stored.
+      if (activeId)
+        await getConversation(activeId)
+          .then(setActiveThread)
+          .catch(() => {});
+      return;
+    }
+    setActiveThread((cur) => (cur ? { ...cur, messages: cur.messages.slice(0, idx) } : cur));
+    await send(next);
+  }
+
+  /** Run the answer through LaoNLP (spelling) and the verified glossary (terminology).
+   *  `rewrite:false` keeps it to the deterministic checkers — no Ollama round-trip, so it
+   *  returns while the reader is still looking at the answer. */
+  async function runLaoCheck(text: string, idx: number) {
+    if (laoBusy !== null) return;
+    setLaoBusy(idx);
+    try {
+      const res = await fetch(`${BASE}/lao/check`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text, rewrite: false }),
+      });
+      if (!res.ok) throw new Error(`rag-api /lao/check → ${res.status}`);
+      const body = (await res.json()) as LaoCheck;
+      setLaoCheck((cur) => ({ ...cur, [idx]: body }));
+    } catch {
+      // A failed check must not look like a clean bill of health.
+      setLaoCheck((cur) => {
+        const next = { ...cur };
+        delete next[idx];
+        return next;
+      });
+    } finally {
+      setLaoBusy(null);
+    }
+  }
+
   function startNewChat() {
     abortRef.current?.abort();
     setActiveId(null);
     setInput("");
     setPanel(null);
+    setRefsFor(null);
     composerRef.current?.focus();
   }
 
@@ -528,6 +674,7 @@ export function ChatClient() {
                     onClick={() => {
                       setActiveId(c.id);
                       setPanel(null);
+                      setRefsFor(null);
                       if (window.innerWidth < 768) setSidebarOpen(false);
                     }}
                     lang="lo"
@@ -620,12 +767,28 @@ export function ChatClient() {
             ) : (
               messages.map((msg, i) =>
                 msg.role === "user" ? (
-                  <div key={i} className="mb-6 flex justify-end">
-                    <div
-                      lang="lo"
-                      className="bg-chat-user/65 text-chat-user-foreground glass-edge max-w-[85%] rounded-2xl rounded-ee-md border px-4 py-2.5 text-[1.02rem] leading-[1.7] whitespace-pre-wrap backdrop-blur-xl"
-                    >
-                      {msg.content}
+                  <div key={i} className="group mb-6 flex justify-end">
+                    <div className="flex max-w-[85%] items-start gap-1">
+                      {/* Only a persisted turn can be edited — an optimistic one has no
+                       * server id to truncate from, and it is about to be replaced anyway. */}
+                      {msg.id && !streaming && (
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          onClick={() => startEdit(msg, i)}
+                          title={t.edit}
+                          aria-label={t.edit}
+                          className="text-muted-foreground mt-1 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                        >
+                          <PenLine />
+                        </Button>
+                      )}
+                      <div
+                        lang="lo"
+                        className="bg-chat-user/65 text-chat-user-foreground glass-edge rounded-2xl rounded-ee-md border px-4 py-2.5 text-[1.02rem] leading-[1.7] whitespace-pre-wrap backdrop-blur-xl"
+                      >
+                        {msg.content}
+                      </div>
                     </div>
                   </div>
                 ) : (
@@ -635,7 +798,8 @@ export function ChatClient() {
                         <MessageBody
                           content={msg.content}
                           sources={msg.sources}
-                          onOpenSource={setPanel}
+                          index={i}
+                          onCite={handleCite}
                         />
                       ) : streaming && i === messages.length - 1 ? (
                         <StreamProgress
@@ -689,12 +853,143 @@ export function ChatClient() {
                           {msg.reported ? <Check /> : <Flag />}
                           {msg.reported ? t.reported : t.report}
                         </Button>
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          disabled={laoBusy !== null}
+                          onClick={() => void runLaoCheck(msg.content, i)}
+                          className="text-muted-foreground"
+                          title="LaoNLP spellcheck + glossary terminology"
+                        >
+                          {laoBusy === i ? <Loader2 className="animate-spin" /> : <SpellCheck />}
+                          {t.laoCheck}
+                        </Button>
                         {(msg.sources ?? []).length > 0 && (
-                          <span className="text-muted-foreground ms-1 text-xs">
+                          <Button
+                            size="xs"
+                            variant="ghost"
+                            onClick={() => setRefsFor((cur) => (cur === i ? null : i))}
+                            aria-expanded={refsFor === i}
+                            className="text-muted-foreground"
+                          >
+                            <ChevronDown
+                              className={cn("transition-transform", refsFor === i && "rotate-180")}
+                            />
                             {t.sources}: {(msg.sources ?? []).length}
-                          </span>
+                          </Button>
                         )}
                       </div>
+                    )}
+
+                    {/* LaoNLP findings. Reported, not applied — see the state declaration. */}
+                    {laoCheck[i] && (
+                      <div className="glass glass-edge mt-2 rounded-2xl border p-3 text-xs">
+                        {laoCheck[i]!.spelling.length === 0 &&
+                        laoCheck[i]!.terminology.length === 0 ? (
+                          <p className="text-emerald-700 dark:text-emerald-400">{t.laoOk}</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {laoCheck[i]!.terminology.length > 0 && (
+                              <div>
+                                <p className="text-muted-foreground mb-1 font-medium">
+                                  {t.laoTerms}
+                                </p>
+                                <ul className="space-y-0.5">
+                                  {laoCheck[i]!.terminology.map((v) => (
+                                    <li key={v.found} lang="lo">
+                                      <span className="text-destructive line-through">
+                                        {v.found}
+                                      </span>
+                                      {" → "}
+                                      <span className="font-medium">{v.useInstead}</span>
+                                      <span className="text-muted-foreground"> ({v.termEn})</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {laoCheck[i]!.spelling.length > 0 && (
+                              <div>
+                                <p className="text-muted-foreground mb-1 font-medium">
+                                  {t.laoSpelling}
+                                </p>
+                                <ul className="space-y-0.5">
+                                  {laoCheck[i]!.spelling.slice(0, 12).map((sp) => (
+                                    <li key={sp.token} lang="lo">
+                                      <span className="text-amber-700 dark:text-amber-400">
+                                        {sp.token}
+                                      </span>
+                                      {sp.suggestions.length > 0 && (
+                                        <span className="text-muted-foreground">
+                                          {" → "}
+                                          {sp.suggestions.slice(0, 3).join(", ")}
+                                        </span>
+                                      )}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <p className="text-muted-foreground mt-2 border-t pt-2 text-[0.68rem] leading-[1.6]">
+                          {laoCheck[i]!.disclaimer}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* The retrieved sources, always reachable by click — the generator's
+                     * inline `[n]` markers are not guaranteed, and a citation nobody can
+                     * open is a citation nobody can check. Opens the same panel the
+                     * inline markers do. */}
+                    {refsFor === i && (msg.sources ?? []).length > 0 && (
+                      <ol className="glass glass-edge mt-2 rounded-2xl border p-1.5">
+                        {(msg.sources ?? []).map((s) => (
+                          <li key={s.id}>
+                            <button
+                              type="button"
+                              onClick={() => setPanel(s)}
+                              className={cn(
+                                "hover:bg-foreground/5 flex w-full items-start gap-2 rounded-xl px-2 py-1.5 text-start transition-colors",
+                                panel?.id === s.id && "bg-foreground/5",
+                              )}
+                            >
+                              <span className="bg-citation/15 text-citation mt-[0.1em] flex size-5 shrink-0 items-center justify-center rounded text-xs font-semibold">
+                                {s.n}
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span lang="lo" className="block truncate text-sm">
+                                  {s.title}
+                                </span>
+                                {s.headingPath.length > 0 && (
+                                  <span
+                                    lang="lo"
+                                    className="text-muted-foreground block truncate text-xs"
+                                  >
+                                    {s.headingPath.join(" › ")}
+                                  </span>
+                                )}
+                              </span>
+                              {/* web and erp sources are not exportable — say so here, not
+                               * only once the panel is open. */}
+                              <span
+                                className={cn(
+                                  "shrink-0 rounded px-1.5 py-0.5 text-[0.7rem] font-medium",
+                                  s.origin === "web" &&
+                                    "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+                                  s.origin === "erp" &&
+                                    "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+                                  s.origin === "calc" &&
+                                    "bg-sky-500/15 text-sky-700 dark:text-sky-400",
+                                  s.origin === "dataset" && "text-muted-foreground",
+                                )}
+                              >
+                                {s.origin === "dataset" ? s.kind : s.origin}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ol>
                     )}
                   </div>
                 ),
@@ -846,6 +1141,14 @@ export function ChatClient() {
 
           <div className="flex-1 overflow-y-auto px-4 py-3">
             <p className="text-sm font-medium">{panel.title}</p>
+            {panel.origin === "calc" && (
+              <p className="mt-1 text-xs">
+                <span className="bg-sky-500/15 me-2 rounded px-1.5 py-0.5 font-medium text-sky-700 dark:text-sky-400">
+                  calc · ຄິດໄລ່ຈາກຄ່າທີ່ທ່ານໃສ່
+                </span>
+                <span className="text-muted-foreground">ຖືກຕ້ອງສະເພາະຄ່າທີ່ໃຫ້ມາ — ບໍ່ເຂົ້າ dataset</span>
+              </p>
+            )}
             {panel.origin === "erp" && (
               <p className="mt-1 text-xs">
                 <span className="me-2 rounded bg-emerald-500/15 px-1.5 py-0.5 font-medium text-emerald-700 dark:text-emerald-400">
@@ -888,17 +1191,78 @@ export function ChatClient() {
                 </div>
               )}
             </dl>
-            {/* The pristine `content` column, verbatim — never reflowed or normalised.
-             * This pane is what a reviewer checks the answer against. */}
-            <p
-              lang="lo"
-              className="border-border mt-3 border-t pt-3 text-[0.95rem] leading-[1.8] whitespace-pre-wrap"
-            >
-              {panel.content}
-            </p>
+            {/* The pristine `content` column. Table chunks are laid out as tables rather
+             * than dumped as pipe text — a reviewer checking an answer against a rate
+             * schedule should not have to parse `| --- | --- |` by eye. Nothing is
+             * reflowed or normalised either way: this renders the stored bytes, it does
+             * not edit them. Prose keeps pre-wrap, which preserves its line structure. */}
+            <div className="border-border mt-3 border-t pt-3">
+              {hasPipeTable(panel.content) ? (
+                <div className="text-[0.9rem]">{renderMarkdown(panel.content, noCite)}</div>
+              ) : (
+                <p lang="lo" className="text-[0.95rem] leading-[1.8] whitespace-pre-wrap">
+                  {panel.content}
+                </p>
+              )}
+            </div>
           </div>
         </aside>
       )}
+
+      {/* Edit-and-resend, in a modal.
+       *
+       * A question can be long and is often Lao, which wraps hard inside a chat bubble; a
+       * dialog gives it a real editing surface and puts the consequence in writing before
+       * the user commits, which an inline box had no room to say. `key` remounts the
+       * textarea per turn so the caret and scroll position start clean on each open. */}
+      <Dialog open={editing !== null} onOpenChange={(o) => !o && cancelEdit()}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{t.editTitle}</DialogTitle>
+            <DialogDescription lang={lang}>{t.editWarn}</DialogDescription>
+          </DialogHeader>
+          <textarea
+            key={editing?.id ?? "none"}
+            lang="lo"
+            value={editDraft}
+            onChange={(e) => setEditDraft(e.target.value)}
+            onKeyDown={(e) => {
+              // Escape is handled here rather than left to the dialog. Base UI's own
+              // dismiss did not fire with the caret in this textarea, and the inline
+              // editor this modal replaced closed on Escape — losing that would be a
+              // regression in the one shortcut people actually reach for.
+              if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                cancelEdit();
+                return;
+              }
+              // Enter sends, matching the composer below the thread. Shift+Enter is a
+              // newline — a multi-paragraph question must stay editable.
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void submitEdit();
+              }
+            }}
+            rows={Math.min(14, Math.max(3, editDraft.split("\n").length + 1))}
+            // The caret belongs in the box the user just opened. Base UI moves focus into
+            // the dialog on its own; this aims it at the textarea rather than the first button.
+            autoFocus
+            className="glass-edge focus-visible:ring-ring/40 w-full resize-y rounded-2xl border bg-transparent px-3.5 py-2.5 text-[1.02rem] leading-[1.7] outline-none focus-visible:ring-3"
+          />
+          <DialogFooter>
+            <Button variant="ghost" onClick={cancelEdit}>
+              {t.cancel}
+            </Button>
+            <Button
+              disabled={!editDraft.trim() || editDraft.trim() === editing?.original || streaming}
+              onClick={() => void submitEdit()}
+            >
+              {t.resend}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
