@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { exportRequest } from "../export.ts";
 import { term } from "../glossary.ts";
 import {
+  answerLang,
   chatRequest,
   chunkPatch,
   parseResponse,
   qaInput,
+  resolvedAnswerLang,
   reviewState,
   streamEvent,
 } from "../index.ts";
@@ -135,7 +137,13 @@ describe("streamEvent", () => {
   test("accepts each frame the server actually emits", () => {
     const frames: unknown[] = [
       { type: "created", conversationId: "c1", userMessageId: "m1" },
-      { type: "citations", sources: [source], glossaryMatches: [], retrievalQuery: "ອາກອນ" },
+      {
+        type: "citations",
+        sources: [source],
+        glossaryMatches: [],
+        retrievalQuery: "ອາກອນ",
+        answerLang: "lo",
+      },
       { type: "token", t: "ບັນ" },
       { type: "done", conversationId: "c1", assistantMessageId: "m2" },
       { type: "error", error: "ollama unreachable" },
@@ -165,6 +173,7 @@ describe("streamEvent", () => {
       sources: [superseded],
       glossaryMatches: [],
       retrievalQuery: "q",
+      answerLang: "lo",
     });
     expect(r.success).toBe(true);
   });
@@ -177,6 +186,7 @@ describe("streamEvent", () => {
       sources: [withoutOrigin],
       glossaryMatches: [],
       retrievalQuery: "q",
+      answerLang: "lo",
     });
     expect(r.success).toBe(false);
   });
@@ -209,5 +219,36 @@ describe("parseResponse", () => {
     expect(() => parseResponse(term, { id: "1", term_en: "account" }, "GET /glossary")).toThrow(
       /GET \/glossary.*termLo/s,
     );
+  });
+});
+
+describe("answerLang", () => {
+  test("a citations frame without a resolved answer language is rejected", () => {
+    // The frame carries the language the answer is being written in so the UI can label
+    // the turn without sniffing tokens. Optional here would mean the client silently
+    // falling back to Lao for an English answer.
+    const r = streamEvent.safeParse({
+      type: "citations",
+      sources: [],
+      glossaryMatches: [],
+      retrievalQuery: "q",
+    });
+    expect(r.success).toBe(false);
+  });
+
+  test("`auto` is a request, never a resolution", () => {
+    // By the time the server emits a frame the question has been read and the language
+    // decided — `auto` on the wire would mean nothing decided it.
+    expect(answerLang.safeParse("auto").success).toBe(true);
+    expect(resolvedAnswerLang.safeParse("auto").success).toBe(false);
+    for (const l of ["lo", "en", "both"]) {
+      expect(resolvedAnswerLang.safeParse(l).success).toBe(true);
+    }
+  });
+
+  test("a chat request may omit answerLang entirely", () => {
+    expect(chatRequest.safeParse({ message: "ສະບາຍດີ" }).success).toBe(true);
+    expect(chatRequest.safeParse({ message: "hi", answerLang: "both" }).success).toBe(true);
+    expect(chatRequest.safeParse({ message: "hi", answerLang: "th" }).success).toBe(false);
   });
 });

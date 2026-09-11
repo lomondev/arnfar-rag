@@ -1,6 +1,7 @@
 import { Elysia, t } from "elysia";
 
 import { devTenant } from "../../lib/tenant.ts";
+import { mineConversations } from "./mine.ts";
 import {
   assignSplits,
   createDraftFromChunk,
@@ -102,4 +103,27 @@ export const qaRoutes = new Elysia({ prefix: "/qa" })
     },
     { body: t.Object({ reviewer: t.Optional(t.String()) }) },
   )
-  .post("/assign-splits", async () => assignSplits(devTenant()));
+  .post("/assign-splits", async () => assignSplits(devTenant()))
+  /**
+   * Harvest QA candidates out of conversation history — the flywheel.
+   *
+   * `dryRun` (the default) returns exactly what would be created without writing, so the
+   * Studio can show the queue before committing. Every created row is `verified = false`
+   * with `source = 'chat_mined'`; mining proposes, a person disposes.
+   */
+  .post(
+    "/mine",
+    async ({ body }) =>
+      mineConversations(devTenant(), {
+        dryRun: body.dryRun ?? true,
+        ...(body.limit ? { limit: body.limit } : {}),
+        ...(body.collection ? { collection: body.collection } : {}),
+      }),
+    {
+      body: t.Object({
+        dryRun: t.Optional(t.Boolean()),
+        limit: t.Optional(t.Number({ minimum: 1, maximum: 200 })),
+        collection: t.Optional(t.String()),
+      }),
+    },
+  );

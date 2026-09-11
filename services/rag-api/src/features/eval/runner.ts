@@ -6,6 +6,7 @@ import { db } from "../../lib/db.ts";
 import { env } from "../../lib/env.ts";
 import { newId } from "../../lib/ids.ts";
 import { rerankAvailable } from "../../lib/sidecars.ts";
+import { joinLaoWordSpaces, looksSegmented } from "../lao/clean.ts";
 import { prepareQuery } from "../search/service.ts";
 import { ragAnswer } from "./generate.ts";
 import { judgeFaithfulness } from "./judge.ts";
@@ -38,6 +39,47 @@ export class EvalPreconditionError extends Error {
   }
 }
 
+/** Which `lao_qa_pair.split` buckets a run measures.
+ *
+ *  This exists because the harness used to measure ALL verified pairs. The `split` column
+ *  was populated and nothing read it, so every run scored 71% training data AND consumed
+ *  `test` — the held-out set CLAUDE.md says is "never used for tuning". A gate number
+ *  measured that way is not a gate number.
+ *
+ *  `unassigned` is selectable so a fresh corpus (nothing bucketed yet) can still be
+ *  measured deliberately rather than silently.
+ */
+export type EvalSplit = "train" | "dev" | "test" | "unassigned";
+
+/** Routine runs measure the tuning pool. `test` is excluded unless a caller asks for it
+ *  by name — see `isHeldOut` below. */
+export const DEFAULT_EVAL_SPLITS: EvalSplit[] = ["train", "dev"];
+
+/** True when a run touches the held-out set. Such runs are stamped into `eval_run.params`
+ *  and `notes`, so the ledger always shows which numbers came from `test` and a later
+ *  reader can discount anything that was tuned against it. */
+export function isHeldOut(splits: EvalSplit[]): boolean {
+  return splits.includes("test");
+}
+
+/**
+ * Which form of the question the run retrieves on.
+ *
+ * `as-stored` uses `question_lo` verbatim. The seeded QA set was authored space-segmented
+ * (`ຄິດໄລ່ ອາກອນມູນຄ່າເພີ່ມ ຕ້ອງ ຊຳລະ ສຸດທິ ແນວ ໃດ`), and real Lao is written without spaces
+ * between words — so a run in that form hands the lexical arm a query whose word
+ * boundaries already agree with the corpus's own hand-authored ones. That is a free ride
+ * no real query gets, and it inflates recall.
+ *
+ * `as-typed` joins those word-boundary spaces first (`joinLaoWordSpaces`, which protects
+ * initialisms like ສປປ ລາວ), so LaoNLP performs the segmentation on the natural form —
+ * exactly what happens to a question a person types into /chat.
+ *
+ * Both are kept because the DIFFERENCE is the measurement that matters: it is the size of
+ * the train/serve skew, and you cannot report it from one number.
+ */
+export type QuestionForm = "as-stored" | "as-typed";
+
 export interface EvalConfig {
   retriever: Retriever;
   genModel: string;
@@ -45,6 +87,10 @@ export interface EvalConfig {
   collections: string[];
   generate: boolean; // run generation + faithfulness (slow)
   adversarial: string[]; // Lao questions whose answer is NOT in the corpus
+  /** Split buckets to measure. Defaults to the tuning pool, never the held-out set. */
+  splits: EvalSplit[];
+  /** Form of the question to retrieve on. Defaults to `as-typed` — what a user produces. */
+  questionForm: QuestionForm;
 }
 
 // Collections are user-creatable; an empty list now means "whole tenant corpus"
@@ -61,11 +107,16 @@ async function chunkContents(ids: string[]): Promise<Map<string, string>> {
   return new Map(rows.map((r) => [r.id, r.content]));
 }
 
-export async function runEval(tenant: TenantContext, cfg: EvalConfig) {
-  const collections = cfg.collections;
-
-  // Eval set = verified QA pairs; gold = their citations.
-  const pairs = await db()
+/**
+ * The gold set for a run: verified QA pairs whose split is one the caller asked for.
+ *
+ * Extracted from `runEval` so the split predicate — the thing that decides whether a
+ * number is a tuning number or a gate number — is directly testable. The predicate is
+ * the whole point: without it a run mixes the tuning pool with the held-out set and
+ * reports one figure for both.
+ */
+export async function selectEvalPairs(tenant: TenantContext, splits: EvalSplit[]) {
+  return db()
     .select()
     .from(schema.laoQaPair)
     .where(
@@ -73,8 +124,25 @@ export async function runEval(tenant: TenantContext, cfg: EvalConfig) {
         eq(schema.laoQaPair.hfId, tenant.hfId),
         eq(schema.laoQaPair.companyId, tenant.companyId),
         eq(schema.laoQaPair.verified, true),
+        inArray(schema.laoQaPair.split, splits),
       ),
     );
+}
+
+/** The question as the retriever should see it, per the run's `questionForm`.
+ *  `joinLaoWordSpaces` is a no-op on a question that was already written naturally, so
+ *  `as-typed` is safe to apply unconditionally. Nothing is written back — the stored
+ *  `question_lo` is human-authored text and this is a read-time transform. */
+function questionFor(form: QuestionForm, questionLo: string): string {
+  return form === "as-typed" ? joinLaoWordSpaces(questionLo) : questionLo;
+}
+
+export async function runEval(tenant: TenantContext, cfg: EvalConfig) {
+  const collections = cfg.collections;
+
+  // Eval set = verified QA pairs in the requested splits; gold = their citations.
+  const splits = cfg.splits.length ? cfg.splits : DEFAULT_EVAL_SPLITS;
+  const pairs = await selectEvalPairs(tenant, splits);
 
   // Refuse before any row exists. A run over zero gold queries used to write
   // recall=0.0000 / faithfulness=0.0000 / p95=0ms into the ledger — numbers that read as a
@@ -83,9 +151,12 @@ export async function runEval(tenant: TenantContext, cfg: EvalConfig) {
   const sample = sampleVerdict(pairs.length);
   if (!sample.usable) {
     throw new EvalPreconditionError(
-      `cannot evaluate: ${sample.note}`,
+      `cannot evaluate on split ${splits.join("+")}: ${sample.note}`,
       "verify QA pairs in /studio/teach or /studio/qa — the eval set is `lao_qa_pair` " +
-        "WHERE verified = true, and an unverified draft is not gold.",
+        "WHERE verified = true AND split IN (" +
+        splits.join(", ") +
+        "), and an unverified draft is not gold. If the splits are empty, assign them " +
+        "first (they bucket by source document, never by row).",
     );
   }
 
@@ -100,6 +171,10 @@ export async function runEval(tenant: TenantContext, cfg: EvalConfig) {
     );
   }
 
+  // Census of the gold set's own storage format, recorded on the run. Computed before any
+  // retrieval so it describes the dataset, not the run's behaviour.
+  const segmentedCount = pairs.filter((p) => looksSegmented(p.questionLo)).length;
+
   const runId = newId();
   await db()
     .insert(schema.evalRun)
@@ -113,7 +188,25 @@ export async function runEval(tenant: TenantContext, cfg: EvalConfig) {
       embedModel: env.embedModel,
       genModel: cfg.genModel,
       retriever: cfg.retriever,
-      params: { collections, top_k: TOP_K, judge_model: cfg.judgeModel, generate: cfg.generate },
+      params: {
+        collections,
+        top_k: TOP_K,
+        judge_model: cfg.judgeModel,
+        generate: cfg.generate,
+        splits,
+        held_out: isHeldOut(splits),
+        question_form: cfg.questionForm,
+        // How many gold questions were stored space-segmented. A high count next to a
+        // high recall is the tell that the number owes something to the storage format
+        // rather than to the retriever.
+        segmented_questions: segmentedCount,
+      },
+      // A run that touched `test` says so in the ledger itself. Historical rows carry no
+      // splits key at all, which is exactly how a reader spots the runs from before this
+      // filter existed — those measured everything, including the held-out set.
+      ...(isHeldOut(splits)
+        ? { notes: `HELD-OUT: measured ${splits.join("+")} — do not tune against this run` }
+        : {}),
       nQueries: pairs.length,
     });
 
@@ -130,14 +223,15 @@ export async function runEval(tenant: TenantContext, cfg: EvalConfig) {
     // Same preparation production uses (segment + embed + glossary expansion), so the
     // measured retriever sees the string a user's question would produce. Kept outside
     // the timer: p95 is the DB retrieval budget, not sidecar round-trips.
-    const prepared = await prepareQuery(p.questionLo, tenant);
+    const askedAs = questionFor(cfg.questionForm, p.questionLo);
+    const prepared = await prepareQuery(askedAs, tenant);
     const t0 = performance.now();
     const retrieved = await retrieve(cfg.retriever, {
       tenant,
       collections,
       queryEmbedding: prepared.queryEmbedding,
       querySeg: prepared.querySeg,
-      queryText: p.questionLo,
+      queryText: askedAs,
       k: TOP_K,
     });
     const latency = Math.round(performance.now() - t0);

@@ -12,6 +12,7 @@ const TABS = [
   { href: "/studio/qa", label: "QA" },
   { href: "/studio/glossary", label: "Glossary" },
   { href: "/studio/knowledge", label: "Knowledge" },
+  { href: "/studio/lessons", label: "Lessons" },
   { href: "/studio/eval", label: "Eval" },
   { href: "/studio/lao-check", label: "Lao check" },
   { href: "/studio/export", label: "Export" },

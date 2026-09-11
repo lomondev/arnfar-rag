@@ -106,6 +106,54 @@ export const givenValues = z.object({
 });
 export type GivenValues = z.infer<typeof givenValues>;
 
+/**
+ * Language the caller wants the answer written in.
+ *
+ * `auto` follows the script of the question; `both` returns a complete Lao answer and a
+ * complete English one in the same turn. Resolution is deterministic and happens server
+ * side (rag-api `features/lao/lang.ts`) — the client states a preference, never a verdict.
+ */
+export const answerLang = z.enum(["auto", "lo", "en", "both"]);
+export type AnswerLang = z.infer<typeof answerLang>;
+
+/** What `auto` resolved to. Never `auto` — by the time this crosses the wire the
+ *  question has been read and the language decided. */
+export const resolvedAnswerLang = z.enum(["lo", "en", "both"]);
+export type ResolvedAnswerLang = z.infer<typeof resolvedAnswerLang>;
+
+/**
+ * The cross-family verdict on a delivered answer.
+ *
+ * Deliberately NOT a `streamEvent` member: by the time a verdict exists the SSE stream has
+ * closed, so a frame carrying it could never arrive there. The client polls
+ * `GET /chat/messages/:id/verification` after `done`.
+ */
+export const verification = z.object({
+  /** 1–5 from the judge; 0 when there was nothing to judge. */
+  score: z.number().int().min(0).max(5),
+  supported: z.boolean(),
+  /** The answer said the sources do not cover the question — a correct abstention, not
+   *  a failure, and the UI must not flag it as one. */
+  abstained: z.boolean(),
+  /** Thai characters in Lao output — always a defect, independent of the judge's view. */
+  thaiContamination: z.boolean(),
+  /** The answer carried no [n] marker at all. */
+  uncited: z.boolean(),
+  reason: z.string(),
+  /** Which model judged. Recorded so a verdict stays interpretable after the judge is
+   *  swapped — and so it is visible that it was not the generator judging itself. */
+  model: z.string(),
+  at: z.string(),
+});
+export type Verification = z.infer<typeof verification>;
+
+/** `verification: null` means "queued, not yet judged" — not "passed". */
+export const verificationResponse = z.object({
+  messageId: z.string(),
+  verification: verification.nullable(),
+});
+export type VerificationResponse = z.infer<typeof verificationResponse>;
+
 export const chatRequest = z.object({
   message: z.string().min(1),
   conversationId: z.string().optional(),
@@ -115,6 +163,10 @@ export const chatRequest = z.object({
   k: z.number().int().min(1).max(20).optional(),
   model: z.string().optional(),
   values: givenValues.optional(),
+  answerLang: answerLang.optional(),
+  /** Teach rather than answer: a structured explanation for a student. Longer, and the
+   *  retrieval context shrinks to make room for it inside the model's window. */
+  teach: z.boolean().optional(),
 });
 export type ChatRequest = z.infer<typeof chatRequest>;
 
@@ -142,6 +194,9 @@ export const streamEvent = z.discriminatedUnion("type", [
     /** The question retrieval ran on — differs from the user's message when a follow-up
      *  was condensed into a standalone question. */
     retrievalQuery: z.string(),
+    /** Language the answer is being written in, already resolved server side. The UI
+     *  labels the turn from this instead of sniffing tokens as they arrive. */
+    answerLang: resolvedAnswerLang,
   }),
   z.object({ type: z.literal("token"), t: z.string() }),
   z.object({

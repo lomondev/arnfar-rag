@@ -160,8 +160,42 @@ function tableCells(line: string): string[] {
 }
 
 const isTableRow = (l: string): boolean => /\|/.test(l) && l.trim().startsWith("|");
-const isTableDivider = (l: string): boolean =>
-  /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(l) && l.includes("-");
+
+/**
+ * One cell of a divider row: optional alignment colon, dashes, optional elision, colon.
+ *
+ * The elision is the part that is not decoration. SEA-LION pads a divider to match the
+ * width of the column above it and then **abbreviates its own padding**, emitting
+ * `| :------… | :------… |` — a real, verbatim line from `rag_message`. The previous
+ * whole-line character class had no `…` in it, so the divider failed, and a seventeen-row
+ * Lao journal-entry table rendered as a wall of pipe-separated prose. Two of the three
+ * account tables in this database were affected.
+ *
+ * `...` is accepted for the same reason, since a model that elides with a character it
+ * cannot type will type three dots instead.
+ */
+const DIVIDER_CELL = /^:?-+(?:…|\.{2,3})?:?$/;
+
+/**
+ * Is this line a table divider?
+ *
+ * Judged per cell rather than by a character class over the whole line, which is both more
+ * forgiving of generator noise and STRICTER about prose: `ບັນຊີ 411 | ລູກໜີ້ການຄ້າ` has
+ * cells full of Lao, and no amount of tolerance inside a cell can make those look like
+ * dashes. Empty cells are skipped so a ragged divider still counts, but at least one real
+ * divider cell is required — otherwise `|  |  |` would open a table.
+ */
+const isTableDivider = (l: string): boolean => {
+  if (!l.includes("|") || !l.includes("-")) return false;
+  const cells = tableCells(l);
+  let seen = 0;
+  for (const cell of cells) {
+    if (cell === "") continue;
+    if (!DIVIDER_CELL.test(cell)) return false;
+    seen++;
+  }
+  return seen > 0;
+};
 
 type Align = "start" | "center" | "end";
 
@@ -185,10 +219,69 @@ function tableAligns(divider: string): (Align | null)[] {
 const NUMERIC_CELL = /^[+\-(]?[\d\u0ED0-\u0ED9][\d\u0ED0-\u0ED9,.\s'’]*[%)]?$/;
 const isNumericCell = (c: string): boolean => c !== "" && NUMERIC_CELL.test(c.trim());
 
-/** True when a column is entirely quantities, so it can be aligned as one. */
+/** True when a column is entirely digits — enough to give it tabular figures. */
 function columnIsNumeric(rows: string[][], col: number): boolean {
   const values = rows.map((r) => (r[col] ?? "").trim()).filter((c) => c !== "");
   return values.length > 1 && values.every(isNumericCell);
+}
+
+/** A grouping separator, decimal point, percent, sign or parenthesis — the marks that
+ *  distinguish a measured amount from a bare identifier. */
+const QUANTITY_MARK = /[,.'’%()+-]/;
+
+/**
+ * True when a column holds QUANTITIES rather than identifiers.
+ *
+ * All-digits is not enough. An account-code column (613, 531, 37) is entirely numeric and
+ * must still read from the start: codes are labels, and right-aligning variable-length
+ * labels leaves them ragged on the side the eye scans down.
+ *
+ * The discriminator comes from this system's own rule — "All LAK amounts are integers,
+ * thousands-separated, no decimals" (CLAUDE.md, and stated in the generator's prompt). So
+ * a money column always shows a separator somewhere, and a column of bare integers is a
+ * code, a year or a count. Percentages and signed figures count as quantities too.
+ */
+function columnIsQuantity(rows: string[][], col: number): boolean {
+  if (!columnIsNumeric(rows, col)) return false;
+  return rows.some((r) => QUANTITY_MARK.test((r[col] ?? "").trim()));
+}
+
+/**
+ * Do the divider's declared alignments carry per-column intent?
+ *
+ * A divider that declares the SAME alignment for every column says nothing about any
+ * particular one — and that is exactly what the local generator emits: `:---` on every
+ * column, money included, as a template rather than a choice. Honouring it as an
+ * instruction left kip amounts proportional and ragged, which is the one thing a column of
+ * figures exists to prevent.
+ *
+ * A divider that VARIES, or that marks only some columns, is a real decision and is
+ * honoured — a hand-written table that deliberately left-aligns a code column keeps it.
+ */
+function declarationIsInformative(declared: readonly (Align | null)[]): boolean {
+  const marked = declared.filter((d): d is Align => d !== null);
+  if (marked.length === 0) return false; // nothing declared — infer freely
+  if (marked.length < declared.length) return true; // some columns singled out — deliberate
+  return new Set(marked).size > 1; // all the same → a template, not an instruction
+}
+
+/**
+ * Final alignment per column.
+ *
+ * Exported for the tests: this is the rule that decides whether an accounting table is
+ * scannable, and it is worth pinning against the real divider shapes the generator emits.
+ */
+export function resolveAligns(
+  declared: readonly (Align | null)[],
+  rows: readonly string[][],
+  width: number,
+): Align[] {
+  const informative = declarationIsInformative(declared);
+  return Array.from({ length: width }, (_, c) => {
+    const d = declared[c] ?? null;
+    if (informative && d !== null) return d;
+    return columnIsQuantity(rows as string[][], c) ? "end" : "start";
+  });
 }
 
 /**
@@ -379,19 +472,15 @@ export function renderMarkdown(text: string, onCite: CiteHandler): ReactNode {
       }
       const rows = squareRows(raw, header.length);
 
-      // Explicit markdown alignment wins; otherwise a column of pure quantities is aligned
-      // to the end so the digits line up. Everything else reads from the start, which is
-      // also what keeps Lao text correct under the document's writing direction.
-      const aligns: Align[] = header.map((_, c) =>
-        (declared[c] ?? null) !== null
-          ? (declared[c] as Align)
-          : columnIsNumeric(rows, c)
-            ? "end"
-            : "start",
-      );
-      const numericCols = header.map(
-        (_, c) => (declared[c] ?? null) === null && columnIsNumeric(rows, c),
-      );
+      // A meaningful markdown alignment wins; otherwise a column of pure quantities is
+      // aligned to the end so the digits line up. Everything else reads from the start,
+      // which is also what keeps Lao text correct under the document's writing direction.
+      const aligns: Align[] = resolveAligns(declared, rows, header.length);
+      // Tabular figures follow the DATA, not the alignment. A column of quantities is
+      // easier to scan in monospaced, equal-width digits however it happens to be aligned,
+      // and the previous rule withheld them from any column the divider had declared —
+      // which, given a `:---`-on-everything divider, meant every money column in the app.
+      const numericCols = header.map((_, c) => columnIsNumeric(rows, c));
 
       const alignClass = (a: Align): string =>
         a === "end" ? "text-end" : a === "center" ? "text-center" : "text-start";

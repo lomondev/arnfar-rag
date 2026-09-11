@@ -3,6 +3,8 @@ import { eq, sql } from "drizzle-orm";
 
 import { db } from "../../lib/db.ts";
 import { log } from "../../lib/logger.ts";
+import { devTenant } from "../../lib/tenant.ts";
+import { verifyMessage } from "../chat/verify.ts";
 import { embedPendingForDocument } from "./embedder.ts";
 
 const wlog = log.child("ingest-worker");
@@ -22,6 +24,7 @@ interface ClaimedJob {
   id: string;
   kind: string;
   document_id: string | null;
+  payload: Record<string, unknown> | null;
   attempts: number;
   max_attempts: number;
   [key: string]: unknown; // satisfies drizzle execute<T extends Record<string, unknown>>
@@ -38,12 +41,41 @@ async function claim(): Promise<ClaimedJob | null> {
       FOR UPDATE SKIP LOCKED
       LIMIT 1
     )
-    RETURNING id, kind, document_id, attempts, max_attempts
+    RETURNING id, kind, document_id, payload, attempts, max_attempts
   `);
   return rows[0] ?? null;
 }
 
+async function markDone(jobId: string): Promise<void> {
+  await db()
+    .update(schema.ingestJob)
+    .set({ status: "done", updatedAt: new Date() })
+    .where(eq(schema.ingestJob.id, jobId));
+}
+
 async function runJob(job: ClaimedJob): Promise<void> {
+  // Post-hoc faithfulness check on a delivered answer (features/chat/verify.ts). It rides
+  // this queue rather than a new one: `ingest_job` is a generic SKIP LOCKED queue in
+  // everything but its name, and CLAUDE.md decision 1 says no broker appears without a
+  // consumer to justify it. Runs CPU-only, so it never competes with the answer path for
+  // the single GPU.
+  if (job.kind === "verify") {
+    const messageId = typeof job.payload?.messageId === "string" ? job.payload.messageId : null;
+    if (!messageId) throw new Error("verify job has no messageId in payload");
+    const started = performance.now();
+    // A message deleted while its check was queued returns null — normal, not a failure.
+    const result = await verifyMessage(devTenant(), messageId);
+    wlog.info("job done", {
+      jobId: job.id,
+      kind: job.kind,
+      messageId,
+      verified: result !== null,
+      ms: Math.round(performance.now() - started),
+    });
+    await markDone(job.id);
+    return;
+  }
+
   if (job.kind === "embed" && job.document_id) {
     const started = performance.now();
     await embedPendingForDocument(job.document_id);
@@ -53,10 +85,7 @@ async function runJob(job: ClaimedJob): Promise<void> {
       documentId: job.document_id,
       ms: Math.round(performance.now() - started),
     });
-    await db()
-      .update(schema.ingestJob)
-      .set({ status: "done", updatedAt: new Date() })
-      .where(eq(schema.ingestJob.id, job.id));
+    await markDone(job.id);
     return;
   }
   throw new Error(`unknown job kind: ${job.kind}`);

@@ -209,6 +209,41 @@ export async function renameConversation(
   };
 }
 
+/**
+ * Fold one turn's language into the conversation's own `lang` stamp.
+ *
+ * The column has been written once at creation ("mixed" by default) and read by nothing.
+ * It is worth keeping honest: a thread is `lo` while every turn is Lao, `en` while every
+ * turn is English, and `mixed` the moment the user switches — which is a real thing Lao
+ * accounting staff do, and the fact the mining pass needs when it decides whether a turn
+ * belongs in `question_lo` or `question_en`.
+ *
+ * Deliberately monotonic: once a conversation is `mixed` it stays `mixed`, because the
+ * turns that made it so are still in the history. Written outside the message transaction
+ * — it is a derived label, and a failure here must not lose the turn itself.
+ */
+export async function noteConversationLang(
+  tenant: TenantContext,
+  id: string,
+  turnLang: "lo" | "en" | "mixed",
+): Promise<void> {
+  const rows = await db()
+    .select({ lang: schema.ragConversation.lang })
+    .from(schema.ragConversation)
+    .where(and(eq(schema.ragConversation.id, id), tenantCond(tenant)))
+    .limit(1);
+  const current = rows[0]?.lang;
+  if (current === undefined) return;
+  // "mixed" is the seeded default as well as a real verdict, so an untouched conversation
+  // adopts its first turn's language instead of being stuck at the default forever.
+  const next = current === "mixed" ? turnLang : current === turnLang ? current : "mixed";
+  if (next === current) return;
+  await db()
+    .update(schema.ragConversation)
+    .set({ lang: next, updatedAt: new Date() })
+    .where(and(eq(schema.ragConversation.id, id), tenantCond(tenant)));
+}
+
 export async function deleteConversation(tenant: TenantContext, id: string): Promise<boolean> {
   const rows = await db()
     .delete(schema.ragConversation)

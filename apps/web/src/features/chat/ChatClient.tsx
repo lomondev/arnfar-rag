@@ -1,6 +1,11 @@
 "use client";
 
-import type { ChatRequest, StreamEvent as ContractStreamEvent } from "@arnfar/contracts";
+import type {
+  AnswerLang,
+  ChatRequest,
+  StreamEvent as ContractStreamEvent,
+  Verification,
+} from "@arnfar/contracts";
 import { Button } from "@arnfar/ui/components/button";
 import {
   Dialog,
@@ -21,6 +26,7 @@ import {
   Copy,
   Flag,
   Globe,
+  GraduationCap,
   Loader2,
   Moon,
   PanelLeft,
@@ -28,6 +34,9 @@ import {
   Plus,
   Quote,
   Search,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
   SpellCheck,
   Square,
   Sun,
@@ -40,6 +49,7 @@ import { apiBaseUrl } from "@/lib/api";
 import {
   type ConversationSummary,
   deleteConversation as deleteConversationApi,
+  fetchVerification,
   getConversation,
   listConversations,
   promoteToDataset,
@@ -101,6 +111,13 @@ const UI = {
     phaseSearch: "ກຳລັງຄົ້ນຫາແຫຼ່ງອ້າງອີງ",
     phaseRead: "ອ່ານແຫຼ່ງອ້າງອີງ",
     phaseWrite: "ກຳລັງຮ່າງຄຳຕອບ",
+    teachOff: "ສອນ",
+    teachOn: "ໂໝດສອນ",
+    verifyOk: "ກວດສອບແລ້ວ",
+    verifyWarn: "ບໍ່ພົບຫຼັກຖານຮອງຮັບ",
+    verifyAbstain: "ບໍ່ມີໃນເອກະສານ",
+    verifyThai: "ພົບຕົວອັກສອນໄທ",
+    verifyBy: "ກວດໂດຍ",
   },
   en: {
     placeholder: "Ask an accounting question…",
@@ -129,6 +146,13 @@ const UI = {
     phaseSearch: "Searching sources",
     phaseRead: "Reading sources",
     phaseWrite: "Composing answer",
+    teachOff: "teach",
+    teachOn: "teaching",
+    verifyOk: "Verified",
+    verifyWarn: "Not supported by sources",
+    verifyAbstain: "Not in the documents",
+    verifyThai: "Thai characters found",
+    verifyBy: "checked by",
   },
 } as const;
 
@@ -217,6 +241,19 @@ export function ChatClient() {
   // Opt-in internet augmentation — default OFF (offline-capable stays the default).
   const [webOn, setWebOn] = useState(false);
   const [model, setModel] = useState("");
+  // Language the ANSWER is written in. Deliberately separate state from `lang` above:
+  // `lang` switches the interface chrome only (CLAUDE.md), and wiring the two together
+  // would mean a Lao reader could never ask for an English answer, or vice versa.
+  // "auto" follows the question's script, resolved server-side in features/lao/lang.ts.
+  const [answerLang, setAnswerLang] = useState<AnswerLang>("auto");
+  // Teach rather than answer. Default OFF deliberately: it turns "what is the VAT rate?"
+  // into a six-section lesson, which is the right answer for a student and the wrong one
+  // for an accountant checking a figure. Both users share this box.
+  const [teach, setTeach] = useState(false);
+  // Cross-family verdicts, keyed by server message id. Populated by polling after an
+  // answer completes — the judge runs on the CPU and takes minutes, so there is no open
+  // stream left to push the result down.
+  const [verdicts, setVerdicts] = useState<Record<string, Verification>>({});
 
   const abortRef = useRef<AbortController | null>(null);
   // Which conversation an answer is currently streaming into — guards the thread-load
@@ -228,6 +265,38 @@ export function ChatClient() {
 
   const t = UI[lang];
   const messages = activeThread?.messages ?? [];
+
+  /**
+   * Poll for the cross-family verdict on a finished answer.
+   *
+   * Patient by design: the judge runs CPU-only so it never evicts the generator from the
+   * 8 GB card, which costs it ~160 s per verdict. Backing off from 15 s to 60 s covers
+   * roughly six minutes — long enough for a queue of two or three — and then gives up
+   * silently, leaving the answer showing as unchecked rather than as failed.
+   */
+  const pollVerification = useCallback((messageId: string) => {
+    let cancelled = false;
+    const delays = [15_000, 20_000, 30_000, 45_000, 60_000, 60_000, 60_000, 60_000];
+    let attempt = 0;
+
+    const tick = async (): Promise<void> => {
+      if (cancelled) return;
+      const v = await fetchVerification(messageId);
+      if (cancelled) return;
+      if (v) {
+        setVerdicts((cur) => ({ ...cur, [messageId]: v }));
+        return;
+      }
+      const delay = delays[attempt++];
+      if (delay === undefined) return; // gave up — stays "not checked"
+      window.setTimeout(() => void tick(), delay);
+    };
+
+    window.setTimeout(() => void tick(), delays[0]);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const modelLabel = shortModel(model || MODELS.default || "SEA-LION");
 
   /** Clicking a citation marker in an answer opens that answer's reference list *and*, when
@@ -395,6 +464,8 @@ export function ChatClient() {
           ...(scope.startsWith("kind:") ? { kinds: [scope.slice(5)] } : {}),
           ...(webOn ? { webSearch: true } : {}),
           ...(model ? { model } : {}),
+          ...(answerLang !== "auto" ? { answerLang } : {}),
+          ...(teach ? { teach: true } : {}),
         } satisfies ChatRequest),
         signal: ctrl.signal,
       });
@@ -444,6 +515,14 @@ export function ChatClient() {
                 flushPending();
               }, STREAM_FLUSH_MS);
             }
+          } else if (ev.type === "done") {
+            // The client never read this frame before, so an in-flight answer carried no
+            // server id until the thread was reloaded. It needs one now: the verification
+            // verdict is addressed by message id, and it lands minutes after the stream.
+            flushPending();
+            const doneId = ev.assistantMessageId;
+            patchMessage(assistantIdx, (m) => ({ ...m, id: doneId }));
+            pollVerification(doneId);
           } else if (ev.type === "error") {
             flushPending(); // keep token order ahead of the error note
             patchMessage(assistantIdx, (m) => ({
@@ -821,6 +900,7 @@ export function ChatClient() {
 
                     {msg.content && !(streaming && i === messages.length - 1) && (
                       <div className="mt-2.5 flex flex-wrap items-center gap-1">
+                        {msg.id && verdicts[msg.id] && <VerdictBadge v={verdicts[msg.id]!} t={t} />}
                         <Button
                           size="xs"
                           variant="ghost"
@@ -1082,6 +1162,30 @@ export function ChatClient() {
                   ))}
                 </Select>
               )}
+              <Select
+                value={answerLang}
+                onChange={(e) => setAnswerLang(e.target.value as AnswerLang)}
+                className="h-7"
+                title="ພາສາຂອງຄຳຕອບ · answer language"
+              >
+                <option value="auto">ອັດຕະໂນມັດ · auto</option>
+                <option value="lo">ລາວ</option>
+                <option value="en">English</option>
+                <option value="both">ລາວ + English</option>
+              </Select>
+
+              <Button
+                type="button"
+                size="xs"
+                variant={teach ? "default" : "ghost"}
+                onClick={() => setTeach((v) => !v)}
+                title="ອະທິບາຍລະອຽດແບບຄູສອນ · explain in full, like a teacher"
+                className={teach ? "gap-1" : "text-muted-foreground gap-1"}
+              >
+                <GraduationCap className="size-3.5" />
+                {teach ? t.teachOn : t.teachOff}
+              </Button>
+
               <Button
                 type="button"
                 size="xs"
@@ -1273,6 +1377,51 @@ function Dot({ delay }: { delay: string }) {
       className="bg-muted-foreground size-1.5 animate-bounce rounded-full"
       style={{ animationDelay: delay }}
     />
+  );
+}
+
+/**
+ * The cross-family verdict on an answer.
+ *
+ * Advisory, never corrective — it labels the answer and leaves the text alone. A judge
+ * that silently rewrote accounting figures would be a worse failure than the one it is
+ * catching, so the reader is told and decides.
+ *
+ * An abstention is styled neutrally on purpose: "the documents do not cover this" is the
+ * cite-or-abstain rule working, and flagging it as a failure would train people to ignore
+ * the badge on the answers where it matters.
+ */
+function VerdictBadge({ v, t }: { v: Verification; t: (typeof UI)[keyof typeof UI] }) {
+  const tone = v.thaiContamination ? "warn" : v.abstained ? "neutral" : v.supported ? "ok" : "warn";
+  const label = v.thaiContamination
+    ? t.verifyThai
+    : v.abstained
+      ? t.verifyAbstain
+      : v.supported
+        ? t.verifyOk
+        : t.verifyWarn;
+  return (
+    <span
+      // `title` carries the judge's own reasoning — the badge states the verdict, the
+      // tooltip says why, and neither costs the reader a click to see the answer.
+      title={`${v.reason}\n\n${t.verifyBy} ${v.model}`}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.7rem] font-medium",
+        tone === "ok" && "border-primary/30 text-primary",
+        tone === "warn" && "border-destructive/40 text-destructive",
+        tone === "neutral" && "border-border text-muted-foreground",
+      )}
+    >
+      {tone === "ok" ? (
+        <ShieldCheck className="size-3" />
+      ) : tone === "warn" ? (
+        <ShieldAlert className="size-3" />
+      ) : (
+        <Shield className="size-3" />
+      )}
+      {label}
+      {v.score > 0 && <span className="opacity-60">{v.score}/5</span>}
+    </span>
   );
 }
 

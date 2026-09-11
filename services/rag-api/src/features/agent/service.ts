@@ -7,6 +7,7 @@ import { getRole } from "../../domains/roles.ts";
 import { db } from "../../lib/db.ts";
 import { generate } from "../../lib/ollama.ts";
 import { buildContext, buildSystemPrompt, type CitationSource, toSources } from "../chat/prompt.ts";
+import { type AnswerLang, resolveAnswerLang } from "../lao/lang.ts";
 import { search } from "../search/service.ts";
 import { coaSearch, glossaryLookup } from "../tools/service.ts";
 
@@ -32,6 +33,8 @@ export interface AgentAsk {
   role?: string;
   k?: number;
   model?: string;
+  /** Language for the answer; `auto` (the default) follows the question's script. */
+  answerLang?: AnswerLang;
   tenant: TenantContext;
 }
 
@@ -44,6 +47,8 @@ export interface ToolCall {
 export interface AgentAnswer {
   domain: string;
   role: string;
+  /** Language the answer was written in, already resolved. */
+  answerLang: "lo" | "en" | "both";
   answer: string;
   citations: CitationSource[];
   toolCalls: ToolCall[];
@@ -144,8 +149,15 @@ export async function askAgent(p: AgentAsk): Promise<AgentAnswer> {
   ]);
   const citations = toSources(retrieval.hits);
 
+  // Same deterministic resolution the chat path uses — an agent answering an English
+  // question in Lao is the same defect wherever it happens.
+  const answerLang = resolveAnswerLang(p.answerLang ?? "auto", p.question);
   const system = [
-    buildSystemPrompt(glossary.terms, glossary.forbidden),
+    buildSystemPrompt({
+      glossary: glossary.terms,
+      forbidden: glossary.forbidden,
+      answerLang,
+    }),
     domain.systemPreamble,
     role.persona,
   ]
@@ -167,5 +179,5 @@ export async function askAgent(p: AgentAsk): Promise<AgentAnswer> {
     ...(p.model ? { model: p.model } : {}),
   });
 
-  return { domain: domain.key, role: role.key, answer, citations, toolCalls };
+  return { domain: domain.key, role: role.key, answerLang, answer, citations, toolCalls };
 }

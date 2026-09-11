@@ -1,7 +1,7 @@
+import type { VerificationResponse } from "@arnfar/contracts";
 import { schema } from "@arnfar/db";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { Elysia, t } from "elysia";
-
 import { db } from "../../lib/db.ts";
 import { env } from "../../lib/env.ts";
 import { listGenModels } from "../../lib/ollama.ts";
@@ -15,7 +15,9 @@ import {
   listConversations,
   renameConversation,
 } from "./conversation.ts";
+
 import { chatStream } from "./service.ts";
+import { enqueueVerification, getVerification, verifyMessage } from "./verify.ts";
 
 export const chatRoutes = new Elysia({ prefix: "/chat" })
   // ── Conversation CRUD ──────────────────────────────────────────────────────
@@ -99,6 +101,34 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
     return { default: env.genModel, models };
   })
 
+  /**
+   * The cross-family verdict on one answer, or null while it is still queued.
+   *
+   * Polled by the client after `done` rather than pushed on the SSE stream: by the time a
+   * verdict exists the stream has closed, and a frame that can never arrive on that stream
+   * would be a lie in the contract. Holding the connection open for the ~30–60 s the CPU
+   * judge takes would tie up a request to deliver one small object.
+   */
+  .get("/messages/:id/verification", async ({ params }): Promise<VerificationResponse> => {
+    const verification = await getVerification(devTenant(), params.id);
+    return { messageId: params.id, verification };
+  })
+  /** Force a re-check now (synchronous). Used by the Studio, and by anyone who turned
+   *  CHAT_VERIFY_ANSWERS off and wants one answer checked on demand. */
+  .post("/messages/:id/verify", async ({ params, set }) => {
+    const verification = await verifyMessage(devTenant(), params.id);
+    if (!verification) {
+      set.status = 404;
+      return { error: "assistant message not found" };
+    }
+    return { messageId: params.id, verification };
+  })
+  /** Queue a check without waiting for it. */
+  .post("/messages/:id/verify-async", async ({ params }) => {
+    await enqueueVerification(devTenant(), params.id);
+    return { messageId: params.id, queued: true };
+  })
+
   // ── Multi-turn streaming chat ──────────────────────────────────────────────
   .post(
     "/stream",
@@ -115,6 +145,8 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
         ...(body.k ? { k: body.k } : {}),
         ...(body.model ? { model: body.model } : {}),
         ...(body.values ? { values: body.values } : {}),
+        ...(body.answerLang ? { answerLang: body.answerLang } : {}),
+        ...(body.teach ? { teach: body.teach } : {}),
       });
       const stream = new ReadableStream({
         async start(controller) {
@@ -149,6 +181,12 @@ export const chatRoutes = new Elysia({ prefix: "/chat" })
         webSearch: t.Optional(t.Boolean()),
         k: t.Optional(t.Number({ minimum: 1, maximum: 20 })),
         model: t.Optional(t.String()),
+        // Language for the answer. Omitted = "auto" = follow the question's script.
+        answerLang: t.Optional(
+          t.Union([t.Literal("auto"), t.Literal("lo"), t.Literal("en"), t.Literal("both")]),
+        ),
+        // Teach rather than answer — a structured explanation for a student.
+        teach: t.Optional(t.Boolean()),
         // Values the user supplied for this question. amountLak is a STRING: a JSON number
         // is a double, and a large kip amount would lose precision on the wire before the
         // integer calculator ever saw it.

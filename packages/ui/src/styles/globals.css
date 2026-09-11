@@ -438,3 +438,89 @@
     background-color: var(--muted-foreground);
   }
 }
+
+/* ── Lesson visuals ────────────────────────────────────────────────────────────────
+ *
+ * Animation for the tutor's eight visual types (features/learn/visuals). Kept here rather
+ * than inlined per component so there is one place to disable them, and so the
+ * reduced-motion rule below is impossible to forget on a new visual.
+ *
+ * Each is a REVEAL, not a loop: a lesson step is read once and then read past, so motion
+ * that continues after the eye has arrived is noise competing with the text beside it.
+ * Every visual staggers its children with an inline `animation-delay`.
+ */
+@keyframes lv-rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes lv-grow-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+@keyframes lv-grow-y {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+@keyframes lv-draw {
+  from {
+    stroke-dashoffset: var(--lv-len, 100);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes lv-settle {
+  0% {
+    transform: translateY(-0.35rem);
+  }
+  60% {
+    transform: translateY(0.12rem);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+.lv-rise {
+  animation: lv-rise 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+}
+.lv-growx {
+  animation: lv-grow-x 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+  transform-origin: left center;
+}
+.lv-growy {
+  animation: lv-grow-y 0.45s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+  transform-origin: bottom center;
+}
+.lv-draw {
+  animation: lv-draw 0.55s ease-out backwards;
+}
+.lv-settle {
+  animation: lv-settle 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+}
+
+/* A student who has asked for less motion still gets the whole picture — every element
+ * ends at its final state, it simply arrives there without travelling. */
+@media (prefers-reduced-motion: reduce) {
+  .lv-rise,
+  .lv-growx,
+  .lv-growy,
+  .lv-draw,
+  .lv-settle {
+    animation: none;
+  }
+}

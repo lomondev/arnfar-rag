@@ -4,9 +4,17 @@ import { schema } from "@arnfar/db";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "../../lib/db.ts";
+import { env } from "../../lib/env.ts";
+import { log } from "../../lib/logger.ts";
 import { generateStream } from "../../lib/ollama.ts";
 import { detectAndRunErpTools, erpToSources } from "../erp/service.ts";
 import { createLaoJoiner, fixLaoTypography } from "../lao/clean.ts";
+import {
+  type AnswerLang,
+  detectLanguage,
+  type ResolvedAnswerLang,
+  resolveAnswerLang,
+} from "../lao/lang.ts";
 import { search } from "../search/service.ts";
 import { webSearch as searchWeb } from "../websearch/service.ts";
 import { condenseQuery } from "./condense.ts";
@@ -14,11 +22,13 @@ import {
   CONTEXT_WINDOW,
   createConversation,
   insertMessage,
+  noteConversationLang,
   recentMessages,
   titleFrom,
   trimForHistory,
 } from "./conversation.ts";
 import {
+  ANSWER_TOKENS,
   buildPrompt,
   buildSystemPrompt,
   type CitationSource,
@@ -26,6 +36,7 @@ import {
   webToSources,
 } from "./prompt.ts";
 import { applyGivenValues, extractGivenValues, type GivenValues } from "./values.ts";
+import { enqueueVerification } from "./verify.ts";
 
 export interface ChatParams {
   message: string;
@@ -39,6 +50,11 @@ export interface ChatParams {
   model?: string;
   /** Values/attributes the user supplied for this question (chat/values.ts). */
   values?: GivenValues;
+  /** Language to answer in. `auto` (the default) follows the question's script;
+   *  `both` returns a full Lao answer and a full English one. */
+  answerLang?: AnswerLang;
+  /** Teach rather than answer: a structured explanation for a student, not a colleague. */
+  teach?: boolean;
   tenant: TenantContext;
   signal?: AbortSignal;
 }
@@ -52,6 +68,9 @@ export type ChatEvent =
       /** The question retrieval ran on — differs from the user's message when a
        *  follow-up was condensed into a standalone question. */
       retrievalQuery: string;
+      /** Language the answer is being written in, already resolved. The UI labels the
+       *  turn with it rather than re-sniffing the tokens as they arrive. */
+      answerLang: ResolvedAnswerLang;
     }
   | { type: "token"; t: string }
   | { type: "done"; conversationId: string; assistantMessageId: string }
@@ -112,10 +131,17 @@ export async function* chatStream(p: ChatParams): AsyncGenerator<ChatEvent> {
       const conv = await createConversation(p.tenant, { title: titleFrom(p.message) });
       conversationId = conv.id;
     }
+    // Resolve the answer language BEFORE anything else uses it: it shapes the system
+    // prompt, the streaming joiner, and the language stamped on both stored turns.
+    // Deterministic — script counts, not a model opinion (features/lao/lang.ts).
+    const answerLang = resolveAnswerLang(p.answerLang ?? "auto", p.message);
+    const questionLang = detectLanguage(p.message);
+
     const userMsg = await insertMessage(p.tenant, {
       conversationId,
       role: "user",
       content: p.message,
+      meta: { lang: questionLang },
     });
     yield { type: "created", conversationId, userMessageId: userMsg.id };
 
@@ -168,31 +194,44 @@ export async function* chatStream(p: ChatParams): AsyncGenerator<ChatEvent> {
       sources,
       glossaryMatches: result.glossaryMatches,
       retrievalQuery: condensed.query,
+      answerLang,
     };
 
     // ── 4. Build the prompt (history → context → question) and stream ───────────
+    const teach = p.teach ?? false;
     const { terms, forbidden } = await glossaryForPrompt(p.tenant);
-    const system = buildSystemPrompt(
-      terms,
+    const system = buildSystemPrompt({
+      glossary: terms,
       forbidden,
-      sources.some((s) => s.origin === "web"),
-      sources.some((s) => s.origin === "erp"),
-      sources.some((s) => s.superseded !== null),
-    );
+      hasWeb: sources.some((s) => s.origin === "web"),
+      hasErp: sources.some((s) => s.origin === "erp"),
+      hasSuperseded: sources.some((s) => s.superseded !== null),
+      answerLang,
+      teach,
+    });
     // The generator answers the user's ORIGINAL wording — only the retriever saw the
     // rewrite. Asking back a condensed question reads as if the assistant misheard.
-    const prompt = buildPrompt(p.message, sources, history, given.promptBlock);
+    const prompt = buildPrompt(p.message, sources, history, given.promptBlock, answerLang, teach);
 
-    const streamOpts = p.model
-      ? { system, model: p.model, ...(p.signal ? { signal: p.signal } : {}) }
-      : { system, ...(p.signal ? { signal: p.signal } : {}) };
+    const streamOpts = {
+      system,
+      // A teaching answer has six sections and a worked example; the default 1,024 tokens
+      // truncates it mid-table, which reads worse than not teaching at all. The context
+      // budget shrinks to match (contextBudgetFor) so the total still fits num_ctx —
+      // otherwise Ollama evicts the head of the prompt, which is the teaching rules.
+      maxTokens: teach ? ANSWER_TOKENS.teach : ANSWER_TOKENS.normal,
+      ...(p.model ? { model: p.model } : {}),
+      ...(p.signal ? { signal: p.signal } : {}),
+    };
 
     // Lao is written without spaces between words; a space marks a phrase boundary. The
     // seeded corpus was authored space-segmented, and the generator copies the register of
     // its context — so answers came out reading as a token list. Repaired on the way to the
     // client AND into the stored message, so a reloaded conversation matches what was read
     // live. Deterministic, offline, and applied to generated text only (never `content`).
-    const joiner = createLaoJoiner();
+    // `en` answers contain no Lao to re-space, and holding them until six Lao runs
+    // arrive would mean holding them forever — see NON_LAO_CHARS_FOR_VERDICT.
+    const joiner = createLaoJoiner({ expectLao: answerLang !== "en" });
     let fullAnswer = "";
     for await (const tok of generateStream(prompt, streamOpts)) {
       const t = joiner.feed(tok);
@@ -226,8 +265,40 @@ export async function* chatStream(p: ChatParams): AsyncGenerator<ChatEvent> {
         // Recorded only when it differs from the message — this is what a bad-recall
         // report needs to answer "what did it actually search for?".
         ...(condensed.rewritten ? { retrievalQuery: condensed.query } : {}),
+        // Language the answer was written in, and whether the caller pinned it. The
+        // mining pass (features/qa/mine.ts) reads these to route a turn to question_lo
+        // or question_en without re-sniffing the text.
+        answerLang,
+        questionLang,
+        ...(p.answerLang && p.answerLang !== "auto" ? { answerLangRequested: p.answerLang } : {}),
       },
     });
+
+    // The conversation's own language stamp, kept current from the turns themselves.
+    // `rag_conversation.lang` has been written at creation and read by nothing since; a
+    // thread that starts in Lao and continues in English is `mixed`, and that is the
+    // fact the sidebar and the mining pass both want.
+    await noteConversationLang(p.tenant, conversationId, questionLang);
+
+    // Queue the cross-family faithfulness check. Deliberately AFTER the answer is stored
+    // and BEFORE `done`, so the verdict is already queued by the time the client starts
+    // polling for it — but it never blocks the stream: the job runs on the CPU lane,
+    // takes ~160 s (measured, qwen3:8b on 12 cores), and the reader already has their
+    // answer long before then.
+    //
+    // Failure here must not fail a delivered answer. The turn is persisted; a missing
+    // verdict shows as "unverified" in the UI, which is honest.
+    if (env.verifyAnswers) {
+      try {
+        await enqueueVerification(p.tenant, assistantMsg.id);
+      } catch (err) {
+        log.warn("could not queue answer verification", {
+          messageId: assistantMsg.id,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
     yield { type: "done", conversationId, assistantMessageId: assistantMsg.id };
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") return;

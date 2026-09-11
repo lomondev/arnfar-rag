@@ -20,6 +20,14 @@ export async function judgeFaithfulness(
   answer: string,
   contexts: string[],
   judgeModel: string,
+  /** Keep the judge off the GPU. The chat verification path passes true: an 8 GB card
+   *  cannot hold the generator and an 8B judge together, and evicting the generator to
+   *  score its own last answer makes the next question pay the reload. */
+  cpuOnly = false,
+  /** Unload the judge as soon as it has answered. The chat verification path sets "0s":
+   *  a CPU-resident 8B judge holds system RAM, and holding it for Ollama's default five
+   *  minutes on a 16 GB box is what got llama-server OOM-killed mid-generation. */
+  keepAlive?: string,
 ): Promise<Judgement> {
   const ctx = contexts.map((c, i) => `[${i + 1}] ${c}`).join("\n");
   const prompt =
@@ -36,6 +44,8 @@ export async function judgeFaithfulness(
     json: true,
     temperature: 0,
     maxTokens: 200,
+    ...(cpuOnly ? { cpuOnly: true } : {}),
+    ...(keepAlive ? { keepAlive } : {}),
   });
   try {
     const p = JSON.parse(raw) as Partial<Judgement>;

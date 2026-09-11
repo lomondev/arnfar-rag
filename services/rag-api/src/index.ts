@@ -14,6 +14,7 @@ import { ingestRoutes } from "./features/ingest/routes.ts";
 import { startWorker, stopWorker } from "./features/ingest/worker.ts";
 import { knowledgeRoutes } from "./features/knowledge/routes.ts";
 import { laoRoutes } from "./features/lao/routes.ts";
+import { learnRoutes } from "./features/learn/routes.ts";
 import { qaRoutes } from "./features/qa/routes.ts";
 import { reviewRoutes } from "./features/review/routes.ts";
 import { searchRoutes } from "./features/search/routes.ts";
@@ -78,6 +79,7 @@ export const app = new Elysia()
   .use(chatRoutes)
   .use(dashboardRoutes)
   .use(knowledgeRoutes)
+  .use(learnRoutes)
   .use(websearchRoutes)
   .use(erpRoutes)
   .use(laoRoutes)

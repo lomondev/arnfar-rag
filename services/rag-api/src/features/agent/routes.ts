@@ -29,6 +29,9 @@ export const agentRoutes = new Elysia({ prefix: "/agent" })
         role: t.Optional(t.String()),
         k: t.Optional(t.Number({ minimum: 1, maximum: 20 })),
         model: t.Optional(t.String()),
+        answerLang: t.Optional(
+          t.Union([t.Literal("auto"), t.Literal("lo"), t.Literal("en"), t.Literal("both")]),
+        ),
       }),
     },
   );

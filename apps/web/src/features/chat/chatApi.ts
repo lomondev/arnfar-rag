@@ -9,6 +9,8 @@ import {
   apiConversationDetail,
   apiConversationSummary,
   parseResponse,
+  type Verification,
+  verificationResponse,
 } from "@arnfar/contracts";
 import { z } from "zod";
 import { apiBaseUrl } from "@/lib/api";
@@ -146,4 +148,27 @@ export async function truncateFrom(messageId: string): Promise<void> {
 
 export async function reportWrong(chunkIds: readonly string[]): Promise<void> {
   await post("/chat/report-wrong", { chunkIds });
+}
+
+/**
+ * The cross-family verdict on one answer, or null while it is still being judged.
+ *
+ * Polled rather than streamed: the verdict lands well after the SSE stream closes (the
+ * judge runs on the CPU so it never evicts the generator from the GPU), so there is no
+ * open connection to push it down. Returns null on any transport failure too — a missing
+ * verdict renders as "not checked", which is the honest state either way.
+ */
+export async function fetchVerification(messageId: string): Promise<Verification | null> {
+  try {
+    const res = await fetch(`${BASE}/chat/messages/${messageId}/verification`);
+    if (!res.ok) return null;
+    const parsed = parseResponse(
+      verificationResponse,
+      await res.json(),
+      `GET /chat/messages/${messageId}/verification`,
+    );
+    return parsed.verification;
+  } catch {
+    return null;
+  }
 }

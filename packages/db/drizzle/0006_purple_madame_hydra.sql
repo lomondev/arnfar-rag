@@ -1,0 +1,1 @@
+ALTER TYPE "public"."qa_source" ADD VALUE 'chat_mined';

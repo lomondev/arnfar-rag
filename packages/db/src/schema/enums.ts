@@ -20,7 +20,15 @@ export const chunkKind = pgEnum("chunk_kind", [
 
 export const reviewState = pgEnum("review_state", ["pending", "accepted", "edited", "rejected"]);
 
-export const qaSource = pgEnum("qa_source", ["human", "llm_draft", "chat_promoted"]);
+/** Where a QA pair came from — provenance drives curation triage.
+ *
+ *  `human`         a person wrote it (highest trust)
+ *  `llm_draft`     drafted from a chunk by the local generator
+ *  `chat_promoted` a curator clicked Promote on a real answer
+ *  `chat_mined`    harvested automatically from conversation history — the flywheel.
+ *                  Always unverified: mining proposes, a person disposes.
+ */
+export const qaSource = pgEnum("qa_source", ["human", "llm_draft", "chat_promoted", "chat_mined"]);
 
 export const qaSplit = pgEnum("qa_split", ["train", "dev", "test", "unassigned"]);
 

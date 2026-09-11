@@ -52,6 +52,64 @@ export const env = {
   genModel: process.env.OLLAMA_GEN_MODEL ?? "hf.co/aisingapore/Gemma-SEA-LION-v3-9B-IT-GGUF:latest",
   // Cross-FAMILY judge (CLAUDE.md decision 4) — qwen ≠ the Gemma-based generator.
   genModelAlt: process.env.OLLAMA_GEN_MODEL_ALT ?? "qwen3:8b",
+  /**
+   * Model that verifies delivered chat answers (features/chat/verify.ts).
+   *
+   * Cross-family by requirement (CLAUDE.md decision 4) — Qwen is not Gemma-based like the
+   * SEA-LION generator, so it is not scoring its own output. **3B, not 8B, and that is a
+   * memory decision, not a quality one:** the verifier runs CPU-only (see verifyOnCpu), so
+   * its weights sit in SYSTEM RAM. Measured on this box — 15.4 GB total, SEA-LION 6.8 GB,
+   * bge-m3 1.5 GB, Postgres, two Python sidecars and Next.js — adding a 6.7 GB
+   * CPU-resident qwen3:8b exhausted swap and the kernel OOM-killed llama-server *mid
+   * generation*, taking a user's in-flight answer with it.
+   *
+   * qwen2.5:3b-instruct is 1.9 GB and leaves headroom. Raise it to qwen3:8b only on a box
+   * with the RAM to spare — a sharper judge is worthless if it kills the thing it judges.
+   */
+  verifyModel: process.env.OLLAMA_VERIFY_MODEL ?? "qwen2.5:3b-instruct",
+  /**
+   * How long Ollama keeps the verifier resident after a verdict.
+   *
+   * "0s" = unload immediately. Ollama's default is five minutes, which for a CPU-resident
+   * model means minutes of held system RAM to serve one background check that has already
+   * finished. Verification is bursty and infrequent; paying a reload per verdict is the
+   * right trade on a memory-constrained host.
+   */
+  verifyKeepAlive: process.env.OLLAMA_VERIFY_KEEP_ALIVE ?? "0s",
+  /**
+   * Run verification on the CPU (`num_gpu: 0`) rather than the GPU.
+   *
+   * On by default, and the reason is arithmetic: an 8 GB card does not hold a 9B generator
+   * and a second model at once. Letting the judge onto the GPU evicts the generator, so the
+   * NEXT question pays a 5–15 s model reload — the user's chat gets slower so a background
+   * check can finish sooner, which is exactly backwards. Verified in practice: with
+   * cpuOnly set, `ollama ps` reports the judge at 100% CPU while the generator keeps the
+   * card.
+   *
+   * The cost is system RAM instead of VRAM — see the sizing note on verifyModel above.
+   * Set false only on a machine with VRAM to spare.
+   */
+  verifyOnCpu: (process.env.OLLAMA_VERIFY_ON_CPU ?? "true").toLowerCase() !== "false",
+  /**
+   * Verify every delivered answer in the background.
+   *
+   * **Default OFF, and that is a measured decision, not caution.** CLAUDE.md decision 4
+   * requires the judge be calibrated against ~20 human labels before its verdict is
+   * trusted, and the two candidate judges on this hardware both fail a different way
+   * before that calibration exists:
+   *
+   *   qwen3:8b            accurate (scored a correct Lao answer 5/5, with reasoning that
+   *                       quoted the right source) — but 6.7 GB CPU-resident alongside the
+   *                       generator exhausted swap and the kernel OOM-killed llama-server
+   *                       mid-answer.
+   *   qwen2.5:3b-instruct memory-safe — but scored that SAME correct answer 1/5
+   *                       "not supported", against a corpus that plainly supports it.
+   *
+   * A badge that cries wolf on correct answers teaches people to ignore it, which is worse
+   * than no badge. So the loop is built, tested and off: turn it on once the judge has been
+   * calibrated, or use POST /chat/messages/:id/verify to check one answer on demand.
+   */
+  verifyAnswers: (process.env.CHAT_VERIFY_ANSWERS ?? "false").toLowerCase() === "true",
   embedConcurrency: Number(process.env.OLLAMA_EMBED_CONCURRENCY ?? 4),
   // Lao word/sentence correction (the /lao/check rewrite). gemma-3n-laos is a
   // Lao-fine-tuned Gemma 3n (6.9B, 32k ctx) — it follows the minimal-edit contract

@@ -1,6 +1,7 @@
 export type { Account, NormalBalance, Statement } from "./account.ts";
 export { account, normalBalance, statement } from "./account.ts";
 export type {
+  AnswerLang,
   ApiConversationDetail,
   ApiConversationSummary,
   ApiMessage,
@@ -8,11 +9,15 @@ export type {
   GivenValues,
   MessageRole,
   PromoteRequest,
+  ResolvedAnswerLang,
   SourceOrigin,
   StoredSource,
   StreamEvent,
+  Verification,
+  VerificationResponse,
 } from "./chat.ts";
 export {
+  answerLang,
   apiConversationDetail,
   apiConversationSummary,
   apiMessage,
@@ -20,9 +25,12 @@ export {
   givenValues,
   messageRole,
   promoteRequest,
+  resolvedAnswerLang,
   sourceOrigin,
   storedSource,
   streamEvent,
+  verification,
+  verificationResponse,
 } from "./chat.ts";
 export type {
   Chunk,
@@ -37,6 +45,31 @@ export type { ExportRequest, ExportResult, ManifestFile } from "./export.ts";
 export { exportRequest, exportResult, manifestFile } from "./export.ts";
 export type { GlossaryMineRequest, Term, TermInput } from "./glossary.ts";
 export { glossaryMineRequest, term, termInput } from "./glossary.ts";
+
+export type {
+  LessonDetail,
+  LessonDraftRequest,
+  LessonProgress,
+  LessonStep,
+  LessonStepKind,
+  LessonSummary,
+  Student,
+  Subject,
+  VisualItem,
+  VisualSpec,
+} from "./learn.ts";
+export {
+  lessonDetail,
+  lessonDraftRequest,
+  lessonProgress,
+  lessonStep,
+  lessonStepKind,
+  lessonSummary,
+  student,
+  subject,
+  visualItem,
+  visualSpec,
+} from "./learn.ts";
 
 export { parseResponse } from "./parse.ts";
 export type { QaInput, QaPair, QaSplit } from "./qa.ts";

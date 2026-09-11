@@ -11,6 +11,7 @@ export * from "./evaluation.ts";
 export * from "./glossary.ts";
 export * from "./job.ts";
 export * from "./knowledge.ts";
+export * from "./learn.ts";
 export * from "./outbox.ts";
 export * from "./qa.ts";
 export * from "./vectors.ts";

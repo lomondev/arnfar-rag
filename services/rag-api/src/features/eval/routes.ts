@@ -6,12 +6,31 @@ import { env } from "../../lib/env.ts";
 import { rerankAvailable } from "../../lib/sidecars.ts";
 import { devTenant } from "../../lib/tenant.ts";
 import type { Retriever } from "./retrievers.ts";
-import { EvalPreconditionError, runEval } from "./runner.ts";
+import {
+  DEFAULT_EVAL_SPLITS,
+  EvalPreconditionError,
+  type EvalSplit,
+  type QuestionForm,
+  runEval,
+} from "./runner.ts";
 
 /** Always measurable. `hybrid-rrf+rerank` is appended only when the sidecar has the
  *  cross-encoder — the matrix is a comparison, and an arm that cannot run must be absent
  *  rather than present-and-failing. */
 const RETRIEVERS: Retriever[] = ["dense", "lexical", "hybrid-rrf"];
+
+/** Split buckets a caller may request. Omitting `splits` measures the tuning pool
+ *  (train+dev); `test` has to be named explicitly, and the run is stamped held-out. */
+const SPLIT_SCHEMA = t.Optional(
+  t.Array(
+    t.Union([t.Literal("train"), t.Literal("dev"), t.Literal("test"), t.Literal("unassigned")]),
+    { minItems: 1 },
+  ),
+);
+
+/** Form of the question to retrieve on. Defaults to `as-typed`: the seeded QA set is
+ *  stored space-segmented, and no user types Lao that way. */
+const QUESTION_FORM_SCHEMA = t.Optional(t.Union([t.Literal("as-typed"), t.Literal("as-stored")]));
 
 const RETRIEVER_SCHEMA = t.Union([
   t.Literal("dense"),
@@ -71,6 +90,8 @@ export const evalRoutes = new Elysia({ prefix: "/eval" })
           collections: body.collections ?? [],
           generate: body.generate ?? false,
           adversarial: body.adversarial ?? [],
+          splits: (body.splits as EvalSplit[] | undefined) ?? DEFAULT_EVAL_SPLITS,
+          questionForm: (body.questionForm as QuestionForm | undefined) ?? "as-typed",
         });
       } catch (err) {
         return precondition(err, set);
@@ -84,6 +105,8 @@ export const evalRoutes = new Elysia({ prefix: "/eval" })
         collections: t.Optional(t.Array(t.String())),
         generate: t.Optional(t.Boolean()),
         adversarial: t.Optional(t.Array(t.String())),
+        splits: SPLIT_SCHEMA,
+        questionForm: QUESTION_FORM_SCHEMA,
       }),
     },
   )
@@ -107,6 +130,8 @@ export const evalRoutes = new Elysia({ prefix: "/eval" })
               collections: body.collections ?? [],
               generate: body.generate ?? false,
               adversarial: body.adversarial ?? [],
+              splits: (body.splits as EvalSplit[] | undefined) ?? DEFAULT_EVAL_SPLITS,
+              questionForm: (body.questionForm as QuestionForm | undefined) ?? "as-typed",
             }),
           );
         }
@@ -125,6 +150,8 @@ export const evalRoutes = new Elysia({ prefix: "/eval" })
         collections: t.Optional(t.Array(t.String())),
         generate: t.Optional(t.Boolean()),
         adversarial: t.Optional(t.Array(t.String())),
+        splits: SPLIT_SCHEMA,
+        questionForm: QUESTION_FORM_SCHEMA,
       }),
     },
   );

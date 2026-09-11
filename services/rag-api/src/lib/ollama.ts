@@ -113,6 +113,21 @@ export interface GenerateOptions {
   json?: boolean;
   model?: string;
   numCtx?: number;
+  /**
+   * Force the model onto the CPU by offloading zero layers to the GPU.
+   *
+   * The 8 GB card holds exactly one 8–9B model. Any background role that took the GPU
+   * would evict the generator and make the next user question pay the reload, so
+   * background roles pass `cpuOnly: true` and leave the card to the answer path.
+   */
+  cpuOnly?: boolean;
+  /**
+   * How long Ollama keeps the model resident after this call ("0s" = unload immediately).
+   *
+   * Matters for background roles on a small box: a CPU-only model holds SYSTEM RAM, and
+   * Ollama's 5-minute default keeps it there long after the one verdict that needed it.
+   */
+  keepAlive?: string;
 }
 
 export interface StreamOptions {
@@ -189,10 +204,14 @@ export async function generate(prompt: string, opts: GenerateOptions = {}): Prom
       // Same silent-truncation guard as generateStream — QA drafting and judging
       // feed whole chunks in; they must never lose the head of the prompt.
       num_ctx: opts.numCtx ?? env.genNumCtx,
+      // Zero GPU layers = CPU-only. Omitted entirely when not requested, so Ollama keeps
+      // its own placement logic for every existing caller.
+      ...(opts.cpuOnly ? { num_gpu: 0 } : {}),
     },
   };
   if (opts.system) body.system = opts.system;
   if (opts.json) body.format = "json";
+  if (opts.keepAlive) body.keep_alive = opts.keepAlive;
   const res = await postWithRetry("/api/generate", body);
   const data = (await res.json()) as GenerateResponse;
   return (data.response ?? "").trim();

@@ -141,6 +141,33 @@ const RESTORE_SPACE = new RegExp(`(^|[^${LAO_LETTER}])(${ALTS})(?=[${LAO_LETTER}
  *  a protected space is unambiguous and the restore below is exact. */
 const SPACE_SENTINEL = "\uE000";
 
+/** Space missing BEFORE a protected initialism, i.e. it is glued to the previous word. */
+const GLUED_LEADING = new RegExp(`([${LAO_LETTER}])(${ALTS})(?=[${LAO_LETTER}]|$)`, "g");
+/** Space missing AFTER one — the ສປປລາວ case. */
+const GLUED_TRAILING = new RegExp(`(^|[^${LAO_LETTER}])(${ALTS})(?=[${LAO_LETTER}])`, "g");
+
+/**
+ * Put the spaces back around a protected initialism written without them.
+ *
+ * Exposed separately from the joiner's own RESTORE_SPACE because the defect appears
+ * wherever a model writes Lao, not only on the de-segmenting path: the lesson drafter
+ * emitted `ຢູ່ສປປລາວ` despite being given the explicit rule — the initialism glued to BOTH
+ * neighbours. RESTORE_SPACE only handles a missing trailing space, because inside
+ * joinLaoWordSpaces the leading one has already been parked on a sentinel.
+ *
+ * Inserting a space before an initialism that follows a Lao letter is safe **for this
+ * closed list specifically**: every entry is a bare consonant run carrying no vowel, and
+ * Lao orthography does not build words that way — so the sequence cannot be the middle of
+ * a real word. That argument does not generalise, which is why the list stays closed and
+ * every addition needs the same evidence the existing entries have.
+ *
+ * Idempotent: a correctly spaced initialism has a space where the lookahead demands a
+ * letter, so neither pattern matches it.
+ */
+export function restoreInitialismSpacing(text: string): string {
+  return text.replace(GLUED_LEADING, "$1 $2").replace(GLUED_TRAILING, "$1$2 ");
+}
+
 export function joinLaoWordSpaces(text: string): string {
   // Park protected spaces on a code point the joiner cannot match; restored at the end.
   let out = text
@@ -278,7 +305,35 @@ export function repairLaoAnswer(text: string): string {
  * `feed` returns text safe to emit; `flush` returns whatever is still held at end of
  * stream. Every feed concatenated with the flush equals joinLaoWordSpaces(wholeAnswer).
  */
-export function createLaoJoiner(): { feed: (chunk: string) => string; flush: () => string } {
+/**
+ * Characters of non-Lao output after which the register question is settled as "not Lao".
+ *
+ * Without this the joiner holds every token until six Lao runs arrive — which for an
+ * English answer is never, so the whole answer lands in one lump at `flush()` and the user
+ * watches an empty "writing" state until generation ends. Six runs is the right bar for
+ * *judging Lao spacing*; it is the wrong bar for *deciding there is no Lao to judge*.
+ *
+ * Set well above a Lao answer's opening latency: an answer that starts with a heading or a
+ * figure before its first Lao word must not be misjudged as English.
+ */
+const NON_LAO_CHARS_FOR_VERDICT = 120;
+
+export interface LaoJoinerOptions {
+  /**
+   * Whether Lao is expected in this answer at all.
+   *
+   * `false` puts the joiner in pass-through immediately, so an English answer streams from
+   * its first token. The caller knows this before generation starts — the answer language
+   * is resolved deterministically in features/lao/lang.ts — so there is no reason to make
+   * the joiner rediscover it from the output.
+   */
+  expectLao?: boolean;
+}
+
+export function createLaoJoiner(opts: LaoJoinerOptions = {}): {
+  feed: (chunk: string) => string;
+  flush: () => string;
+} {
   // Re-join the whole answer each chunk and emit only the part not sent yet.
   //
   // The obvious cheaper design — carry one character of left context — cannot see a
@@ -309,13 +364,19 @@ export function createLaoJoiner(): { feed: (chunk: string) => string; flush: () 
     const maxLen = Math.max(...KEEP_SPACED.map((tok) => tok.length));
     for (let len = Math.min(maxLen, i); len >= 1; len--) {
       const candidate = s.slice(i - len, i);
+      if (!KEEP_SPACED.some((tok) => tok.startsWith(candidate))) continue;
       const precededBySpace = i - len === 0 || s[i - len - 1] === " ";
-      // Only a space before the candidate can ever trigger protection — a Lao letter
-      // there makes it a suffix of a real word, which is never protected.
-      if (precededBySpace && KEEP_SPACED.some((tok) => tok.startsWith(candidate))) {
-        i = Math.max(0, i - len - 1);
-        break;
-      }
+      // Held back whether or not a space precedes it, because BOTH directions are now
+      // undecided at this point: a space that is there may need removing (protection), and
+      // a space that is missing may need inserting (restore — `ຢູ່ສປປລາວ`). Insertion is
+      // the reason the no-space case matters: emitting `ຢູ່ສປປ` and then deciding the text
+      // should read `ຢູ່ ສປປ ລາວ` would rewrite a prefix already on the reader's screen,
+      // which is exactly what this function exists to prevent.
+      //
+      // When a space precedes, the cut includes it — the space itself is the undecided
+      // character. When none does, the cut starts at the candidate.
+      i = precededBySpace ? Math.max(0, i - len - 1) : i - len;
+      break;
     }
     return i;
   }
@@ -328,14 +389,26 @@ export function createLaoJoiner(): { feed: (chunk: string) => string; flush: () 
    * registers in one paragraph. Nothing is emitted until there is enough Lao to judge, or
    * the stream ends — a short delay on first paint, in exchange for a consistent answer.
    */
-  let verdict: boolean | null = null;
+  // An answer that will not contain Lao has nothing to re-space: latch pass-through up
+  // front so it streams from the first token instead of buffering to flush().
+  let verdict: boolean | null = opts.expectLao === false ? false : null;
 
   function settled(): boolean {
     if (verdict !== null) return true;
     const runs = raw.match(LAO_RUN) ?? [];
-    if (runs.length < MIN_RUNS_FOR_VERDICT) return false;
-    verdict = looksSegmented(raw);
-    return true;
+    if (runs.length >= MIN_RUNS_FOR_VERDICT) {
+      verdict = looksSegmented(raw);
+      return true;
+    }
+    // Enough output has arrived with too little Lao in it to ever judge the spacing.
+    // Settle as pass-through rather than holding the answer hostage to Lao that is not
+    // coming — the caller may have asked for English, or the model may have ignored the
+    // instruction, and either way the text must reach the reader.
+    if (raw.length >= NON_LAO_CHARS_FOR_VERDICT) {
+      verdict = false;
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -347,7 +420,12 @@ export function createLaoJoiner(): { feed: (chunk: string) => string; flush: () 
    * whole and slicing, precisely because the cut is placed where no rule spans it.
    */
   function transform(s: string): string {
-    return verdict === true ? joinLaoWordSpaces(s) : s;
+    // The verdict governs whether to JOIN word spaces. Restoring a protected initialism's
+    // space is correct either way — `ສປປລາວ` is wrong in segmented and unsegmented Lao
+    // alike — and `joinLaoWordSpaces` already restores it on its own path. Without this
+    // branch the repair reached only text the model happened to write space-segmented,
+    // which is the register it uses least.
+    return verdict === true ? joinLaoWordSpaces(s) : restoreInitialismSpacing(s);
   }
 
   function decided(): string {
@@ -374,7 +452,7 @@ export function createLaoJoiner(): { feed: (chunk: string) => string; flush: () 
       const rest = transform(raw).slice(emitted);
       raw = "";
       emitted = 0;
-      verdict = null;
+      verdict = opts.expectLao === false ? false : null;
       return rest;
     },
   };
